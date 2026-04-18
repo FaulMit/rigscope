@@ -19,6 +19,7 @@ function createUpdateController() {
   autoUpdater.autoInstallOnAppQuit = true;
 
   const merge = (patch) => Object.assign(state, patch);
+  const isBusy = () => ["checking", "downloading", "installing"].includes(state.status);
 
   autoUpdater.on("checking-for-update", () => merge({
     status: "checking",
@@ -67,12 +68,13 @@ function createUpdateController() {
     }
   };
 
-  return {
+  const controller = {
     status() {
       return { ...state };
     },
     async check() {
       ensureSupported();
+      if (isBusy()) return { ...state };
       await autoUpdater.checkForUpdates();
       return { ...state };
     },
@@ -97,6 +99,17 @@ function createUpdateController() {
       return { ...state };
     }
   };
+
+  if (state.supported) {
+    setTimeout(() => {
+      controller.check().catch((error) => merge({
+        status: "error",
+        error: error.message || String(error)
+      }));
+    }, 2500).unref();
+  }
+
+  return controller;
 }
 
 module.exports = { createUpdateController };

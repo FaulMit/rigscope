@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2 - 2026-04-18
+
+### Fixed
+
+- Packaged desktop builds now automatically check for updates shortly after startup.
+- The update status text now makes the idle manual check state visible instead of silently showing only the current version.
+
 ## 1.0.1 - 2026-04-18
 
 ### Fixed

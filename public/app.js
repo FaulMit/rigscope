@@ -1267,7 +1267,7 @@ function renderUpdateStatus() {
   const progress = update.progress?.percent !== undefined ? ` ${update.progress.percent}%` : "";
   const labels = {
     unavailable: "desktop only",
-    idle: `v${update.currentVersion || "-"}`,
+    idle: `v${update.currentVersion || "-"} · check`,
     checking: "checking...",
     current: `current v${update.currentVersion || "-"}`,
     available: `update${version}`,
