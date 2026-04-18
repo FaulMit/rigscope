@@ -1,9 +1,10 @@
 {
   "name": "rigscope",
-  "version": "0.3.8",
+  "version": "1.0.0",
   "private": true,
   "description": "Cross-platform local hardware inventory, diagnostics, benchmark, and stress-test dashboard.",
   "main": "electron/main.js",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/FaulMit/rigscope.git"
@@ -17,6 +18,7 @@
     "open": "node server.js --open",
     "app": "node server.js --app",
     "scoreboard": "node scoreboard/server.js",
+    "verify": "node scripts/preflight.js",
     "desktop": "electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
@@ -56,7 +58,9 @@
       "native-runners.js",
       "server.js",
       "package.json",
-      "README.md"
+      "README.md",
+      "CHANGELOG.md",
+      "LICENSE"
     ],
     "directories": {
       "output": "release"

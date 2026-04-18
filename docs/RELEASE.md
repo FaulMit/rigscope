@@ -53,11 +53,21 @@ Manual build:
 Tagged release:
 
 ```bash
-git tag v0.3.6
-git push origin v0.3.6
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 The tag build uploads artifacts and publishes them as GitHub Release assets.
+
+## Auto updates
+
+Packaged desktop builds use `electron-updater` with GitHub Releases as the update feed. The release workflow uploads the required update metadata files:
+
+- `latest.yml` for Windows
+- `latest-linux.yml` and `latest-linux-arm64.yml` for Linux
+- `latest-mac.yml` for macOS
+
+The repository or release asset host must be publicly reachable for normal users. A private GitHub repository returns `404` to unsigned external requests, so packaged auto-update will not work for public users until the repository is public or a separate public update feed is configured.
 
 ## Secrets
 
@@ -107,5 +117,7 @@ Linux AppImage, `.deb`, and `.tar.gz` packages are built unsigned by default. Ad
 1. Update `version` in `package.json`.
 2. Run a local smoke test with `npm start` or `npm run desktop`.
 3. Run the GitHub Actions workflow manually once before tagging when signing secrets change.
-4. Push a `v*` tag for the release.
-5. Download and install the artifacts on Windows, Linux, and macOS before announcing the release.
+4. Confirm the repository or update feed is public if the release is meant for public users.
+5. Push a `v*` tag for the release.
+6. Download and install the artifacts on Windows, Linux, and macOS before announcing the release.
+7. For update validation, install the previous packaged release and update into the new tagged release from inside RigScope.

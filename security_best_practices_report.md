@@ -5,7 +5,10 @@ Scope: local Node server, Electron shell, renderer UI, native stress runner brid
 
 ## Result
 
-RigScope is acceptable for a public unsigned preview release after this pass, with one release blocker remaining outside the codebase: production code signing is still not configured for Windows and macOS.
+RigScope is acceptable for a public 1.0 unsigned desktop release after this pass, with two deployment requirements outside the codebase:
+
+- Configure production code signing for Windows and macOS before advertising the builds as fully trusted production installers.
+- Make GitHub Releases or a replacement update feed publicly reachable before relying on in-app updates for public users.
 
 ## Fixed In This Pass
 
@@ -20,7 +23,8 @@ RigScope is acceptable for a public unsigned preview release after this pass, wi
 
 ## Remaining Risks
 
-- Release artifacts are still unsigned unless CI secrets/certificates are configured. Windows SmartScreen and macOS Gatekeeper may warn users.
+- Release artifacts are unsigned unless CI secrets/certificates are configured. Windows SmartScreen and macOS Gatekeeper may warn users.
+- In-app updates require public release metadata. Private GitHub repositories return `404` for normal users.
 - Native tools such as OCCT, FurMark, Prime95, and y-cruncher are intentionally high-load external programs. RigScope limits duration and profiles, but cannot guarantee thermal safety on badly cooled hardware.
 - The community leaderboard model is suitable for an MVP, not anti-cheat. Scores can be forged unless a future backend signs submissions or performs server-side validation.
 - CSP currently allows inline styles because the UI uses dynamic width/style attributes for meters. This is acceptable for the local app, but a hosted web version should remove inline styles and tighten CSP.
@@ -30,4 +34,5 @@ RigScope is acceptable for a public unsigned preview release after this pass, wi
 - Keep the server bound to `127.0.0.1`.
 - Do not expose `/api/native-runners/start` on a LAN or public interface.
 - Use GitHub sync only with a low-scope token owned by a bot account or move publishing to a hosted backend.
-- Configure signed releases before advertising RigScope as production-ready.
+- Configure signed releases before advertising RigScope as a fully trusted production installer.
+- Keep update metadata public and immutable for each tagged release.
