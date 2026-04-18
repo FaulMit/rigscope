@@ -83,8 +83,10 @@ Windows builds still run without these secrets, but the generated installer and 
 
 For signing, configure:
 
-- `CSC_LINK`: Developer ID Application certificate, usually a base64 certificate or secure URL supported by `electron-builder`
-- `CSC_KEY_PASSWORD`: certificate password
+- `MACOS_CERTIFICATE_BASE64`: base64-encoded Developer ID Application `.p12`
+- `MACOS_CERTIFICATE_PASSWORD`: certificate password
+
+The workflow decodes the certificate and exposes it to `electron-builder` as `CSC_LINK` and `CSC_KEY_PASSWORD`. Local builds may still use `CSC_LINK` and `CSC_KEY_PASSWORD` directly.
 
 For notarization, configure placeholders expected by `electron-builder` tooling:
 
@@ -93,6 +95,8 @@ For notarization, configure placeholders expected by `electron-builder` tooling:
 - `APPLE_TEAM_ID`
 
 The project currently defines macOS DMG and ZIP targets in `package.json`. Signing and notarization are active only when the certificate and Apple credentials are present in GitHub Secrets.
+
+The macOS build uses hardened runtime and `build/entitlements.mac.plist`. The notarization hook is `scripts/notarize.js`; it no-ops when Apple credentials are missing, so unsigned preview builds still work.
 
 ### Linux packages
 

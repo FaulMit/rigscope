@@ -407,13 +407,17 @@ function renderNativeRunners() {
   if (!status.active && selected) {
     setNativeRunnerLog([
       selected.notes,
+      selected.safety?.recommendedMonitor || "Monitor temperatures and stop if the system becomes unstable.",
+      `Duration cap: ${formatSeconds((selected.safety?.maxDurationSec || selected.durationMaxSec || 0) * 1000)}`,
+      status.report ? `Last report: ${status.report.verdict} · ${formatSeconds(status.report.elapsedMs || 0)}` : null,
       selected.executable || "Executable not detected",
       `Required confirmation: ${state.nativeRunners?.acknowledgement || "START_NATIVE_STRESS"}`
-    ]);
+    ].filter(Boolean));
   } else if (status.active) {
     setNativeRunnerLog([
       `${status.label} is running`,
       `elapsed ${formatSeconds(status.elapsedMs || 0)} / ${formatSeconds(status.durationMs || 0)}`,
+      selected?.safety?.recommendedMonitor || "Watch thermals and system stability.",
       ...(status.output || []).slice(-4)
     ]);
   }

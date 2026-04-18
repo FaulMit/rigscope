@@ -12,6 +12,7 @@
     "start": "node server.js",
     "open": "node server.js --open",
     "app": "node server.js --app",
+    "scoreboard": "node scoreboard/server.js",
     "desktop": "electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
@@ -32,6 +33,8 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "@electron/notarize": "^3.1.1",
+    "@electron/notarize": "^2.5.0",
     "electron": "^32.3.3",
     "electron-builder": "^25.1.8"
   },
@@ -86,8 +89,12 @@
         "zip"
       ],
       "artifactName": "RigScope-${version}-mac-${arch}.${ext}",
-      "identity": null,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "category": "public.app-category.utilities"
-    }
+    },
+    "afterSign": "scripts/notarize.js"
   }
 }

@@ -14,6 +14,7 @@ const PUBLIC = path.join(ROOT, "public");
 const COMMUNITY_DIR = path.join(os.homedir(), ".rigscope");
 const COMMUNITY_FILE = path.join(COMMUNITY_DIR, "community-profiles.json");
 const COMMUNITY_FEED_URL = process.env.RIGSCOPE_COMMUNITY_FEED_URL || process.env.RIGSCOPE_COMMUNITY_RAW_URL || "";
+const SCOREBOARD_URL = (process.env.RIGSCOPE_SCOREBOARD_URL || "").replace(/\/+$/, "");
 const GITHUB_GIST_ID = process.env.RIGSCOPE_GITHUB_GIST_ID || "";
 const GITHUB_TOKEN = process.env.RIGSCOPE_GITHUB_TOKEN || "";
 const GIST_FILENAME = process.env.RIGSCOPE_GITHUB_GIST_FILE || "rigscope-community.json";
@@ -1286,6 +1287,34 @@ function isAllowedCommunityUrl(value) {
   }
 }
 
+function isAllowedScoreboardUrl(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol === "https:") return true;
+    return url.protocol === "http:" && ["127.0.0.1", "localhost"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+async function readScoreboardCommunity() {
+  if (!SCOREBOARD_URL || !isAllowedScoreboardUrl(SCOREBOARD_URL) || typeof fetch !== "function") {
+    return { profiles: [], status: SCOREBOARD_URL ? "invalid scoreboard url" : "not configured" };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(`${SCOREBOARD_URL}/api/v1/leaderboard?limit=100`, { signal: controller.signal, cache: "no-store" });
+    if (!response.ok) return { profiles: [], status: `scoreboard ${response.status}` };
+    const payload = await response.json();
+    return { profiles: dedupeProfiles((payload.profiles || []).map((profile) => ({ ...profile, source: "scoreboard" }))), status: "scoreboard online" };
+  } catch (error) {
+    return { profiles: [], status: error.name === "AbortError" ? "scoreboard timeout" : "scoreboard failed" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function readRemoteCommunity() {
   if (!COMMUNITY_FEED_URL || !isAllowedCommunityUrl(COMMUNITY_FEED_URL) || typeof fetch !== "function") {
     return { profiles: [], status: COMMUNITY_FEED_URL ? "invalid feed url" : "not configured" };
@@ -1310,6 +1339,26 @@ async function publishCommunityProfile(profile) {
   const publicProfile = sanitizeProfile({ ...profile, source: "local" });
   const profiles = dedupeProfiles([publicProfile, ...local.filter((item) => item.id !== publicProfile.id)]);
   await writeLocalCommunity(profiles);
+
+  if (SCOREBOARD_URL && isAllowedScoreboardUrl(SCOREBOARD_URL) && typeof fetch === "function") {
+    try {
+      const challengeResponse = await fetch(`${SCOREBOARD_URL}/api/v1/challenge`, { method: "POST" });
+      if (!challengeResponse.ok) throw new Error(`challenge ${challengeResponse.status}`);
+      const challenge = await challengeResponse.json();
+      const submitResponse = await fetch(`${SCOREBOARD_URL}/api/v1/submissions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nonce: challenge.nonce, profile: publicProfile })
+      });
+      if (submitResponse.ok) {
+        const submitted = await submitResponse.json();
+        return { profile: submitted.profile || publicProfile, status: "saved locally and published", github: "scoreboard" };
+      }
+      return { profile: publicProfile, status: "saved locally", github: `scoreboard ${submitResponse.status}` };
+    } catch (error) {
+      return { profile: publicProfile, status: "saved locally", github: `scoreboard failed: ${safeText(error.message)}` };
+    }
+  }
 
   if (!GITHUB_GIST_ID || !GITHUB_TOKEN || typeof fetch !== "function") {
     return { profile: publicProfile, status: "saved locally", github: "not configured" };
@@ -1339,13 +1388,13 @@ async function publishCommunityProfile(profile) {
 }
 
 async function getCommunity() {
-  const [local, remote] = await Promise.all([readLocalCommunity(), readRemoteCommunity()]);
+  const [local, scoreboard, remote] = await Promise.all([readLocalCommunity(), readScoreboardCommunity(), readRemoteCommunity()]);
   return {
     generatedAt: new Date().toISOString(),
-    mode: COMMUNITY_FEED_URL ? "github-feed" : "local",
-    publishing: GITHUB_GIST_ID && GITHUB_TOKEN ? "github-gist" : "local-only",
-    status: remote.status,
-    profiles: dedupeProfiles([...local, ...remote.profiles])
+    mode: SCOREBOARD_URL ? "scoreboard" : COMMUNITY_FEED_URL ? "github-feed" : "local",
+    publishing: SCOREBOARD_URL ? "scoreboard" : GITHUB_GIST_ID && GITHUB_TOKEN ? "github-gist" : "local-only",
+    status: scoreboard.status !== "not configured" ? scoreboard.status : remote.status,
+    profiles: dedupeProfiles([...local, ...scoreboard.profiles, ...remote.profiles])
   };
 }
 

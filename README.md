@@ -161,6 +161,16 @@ npm start
 
 Tokens stay on the backend. The browser UI never asks for or stores a GitHub token.
 
+For a proper leaderboard service, run the bundled scoreboard backend:
+
+```powershell
+npm run scoreboard
+$env:RIGSCOPE_SCOREBOARD_URL="http://127.0.0.1:8797"
+npm start
+```
+
+The scoreboard backend adds challenge nonces, rate limiting, server-side profile normalization, score bounds, and setup lookup endpoints. See [docs/SCOREBOARD.md](docs/SCOREBOARD.md).
+
 ## Security Model
 
 - Local server binds to `127.0.0.1`.
@@ -202,6 +212,7 @@ npm start          # local server only
 npm run open       # server + default browser
 npm run app        # browser app mode
 npm run desktop    # Electron shell
+npm run scoreboard # local leaderboard backend
 npm run pack       # unpacked desktop build
 ```
 

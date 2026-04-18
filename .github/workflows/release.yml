@@ -48,6 +48,11 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
     steps:
       - name: Checkout
@@ -98,6 +103,25 @@ jobs:
           "CSC_LINK=$env:WIN_CSC_LINK" >> $env:GITHUB_ENV
           "CSC_KEY_PASSWORD=$env:WIN_CSC_KEY_PASSWORD" >> $env:GITHUB_ENV
 
+      - name: Decode macOS signing certificate
+        if: runner.os == 'macOS' && env.MACOS_CERTIFICATE_BASE64 != ''
+        shell: bash
+        run: |
+          CERT_PATH="$RUNNER_TEMP/macos-signing-cert.p12"
+          echo "$MACOS_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+          echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
+          echo "CSC_KEY_PASSWORD=$MACOS_CERTIFICATE_PASSWORD" >> "$GITHUB_ENV"
+          echo "CSC_IDENTITY_AUTO_DISCOVERY=true" >> "$GITHUB_ENV"
+
+      - name: Disable signing when no certificate is configured
+        shell: pwsh
+        run: |
+          if ($env:CSC_LINK) {
+            "CSC_IDENTITY_AUTO_DISCOVERY=true" >> $env:GITHUB_ENV
+          } else {
+            "CSC_IDENTITY_AUTO_DISCOVERY=false" >> $env:GITHUB_ENV
+          }
+
       - name: Build packages
         shell: pwsh
         run: |
@@ -114,7 +138,6 @@ jobs:
           exit $exitCode
         env:
           BUILD_SCRIPT: ${{ matrix.script }}
-          CSC_IDENTITY_AUTO_DISCOVERY: false
           ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
 
       - name: Upload build artifacts
