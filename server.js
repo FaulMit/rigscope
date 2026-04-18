@@ -599,6 +599,54 @@ function burn() {
 burn();
 `;
 
+const memoryStressChildScript = `
+const targetMb = Math.max(64, Math.min(Number(process.env.RIGSCOPE_MEMORY_MB || 512), 8192));
+const chunkMb = 32;
+const blocks = [];
+let running = true;
+let cycles = 0;
+let checksum = 0;
+process.on("message", (message) => {
+  if (message === "stop") running = false;
+});
+function emit() {
+  try {
+    process.stdout.write(JSON.stringify({
+      pid: process.pid,
+      targetMb,
+      heldMb: blocks.length * chunkMb,
+      cycles,
+      checksum
+    }) + "\\n");
+  } catch {}
+}
+function allocateNext() {
+  if (!running) return;
+  if (blocks.length * chunkMb < targetMb) {
+    const block = Buffer.allocUnsafe(chunkMb * 1024 * 1024);
+    for (let i = 0; i < block.length; i += 4096) {
+      block[i] = (i + blocks.length + cycles) & 255;
+      checksum = (checksum + block[i]) & 0xffff;
+    }
+    blocks.push(block);
+    cycles++;
+    emit();
+    setTimeout(allocateNext, 80);
+    return;
+  }
+  for (const block of blocks) {
+    for (let i = 0; i < block.length; i += 65536) {
+      block[i] = (block[i] + 1) & 255;
+      checksum = (checksum + block[i]) & 0xffff;
+    }
+  }
+  cycles++;
+  emit();
+  setTimeout(allocateNext, 180);
+}
+allocateNext();
+`;
+
 const psSensorSweep = String.raw`
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -943,6 +991,18 @@ const cpuStress = {
   timer: null
 };
 
+const memoryStress = {
+  active: false,
+  startedAt: 0,
+  durationMs: 0,
+  targetMb: 0,
+  child: null,
+  heldMb: 0,
+  cycles: 0,
+  checksum: 0,
+  timer: null
+};
+
 function stopCpuStress(reason = "stopped") {
   if (!cpuStress.active && !cpuStress.workers.length) {
     return cpuStressStatus(reason);
@@ -1015,9 +1075,161 @@ function cpuStressStatus(reason = "status") {
   };
 }
 
+function stopMemoryStress(reason = "stopped") {
+  if (!memoryStress.active && !memoryStress.child) {
+    return memoryStressStatus(reason);
+  }
+  memoryStress.active = false;
+  clearTimeout(memoryStress.timer);
+  if (memoryStress.child) {
+    try { memoryStress.child.send("stop"); } catch {}
+    setTimeout(() => {
+      if (memoryStress.child && !memoryStress.child.killed) {
+        try { memoryStress.child.kill(); } catch {}
+      }
+    }, 500).unref();
+  }
+  memoryStress.child = null;
+  return memoryStressStatus(reason);
+}
+
+function startMemoryStress({ durationSec = 60, targetMb } = {}) {
+  stopMemoryStress("restarted");
+  const totalMb = Math.round(os.totalmem() / 1024 / 1024);
+  const safeDefault = Math.min(2048, Math.max(256, Math.round(totalMb * 0.08)));
+  const requested = Number(targetMb) || safeDefault;
+  const capped = Math.max(64, Math.min(requested, Math.round(totalMb * 0.2), 8192));
+  memoryStress.active = true;
+  memoryStress.startedAt = Date.now();
+  memoryStress.durationMs = Math.max(10, Math.min(Number(durationSec) || 60, 1800)) * 1000;
+  memoryStress.targetMb = capped;
+  memoryStress.heldMb = 0;
+  memoryStress.cycles = 0;
+  memoryStress.checksum = 0;
+  const child = spawn(process.execPath, ["-e", memoryStressChildScript], {
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "ignore", "ipc"],
+    env: { ...process.env, RIGSCOPE_MEMORY_MB: String(capped) }
+  });
+  memoryStress.child = child;
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    chunk.split(/\r?\n/).filter(Boolean).forEach((line) => {
+      try {
+        const payload = JSON.parse(line);
+        memoryStress.heldMb = Number(payload.heldMb || memoryStress.heldMb);
+        memoryStress.cycles = Number(payload.cycles || memoryStress.cycles);
+        memoryStress.checksum = Number(payload.checksum || memoryStress.checksum);
+      } catch {}
+    });
+  });
+  child.on("exit", () => {
+    if (memoryStress.active) memoryStress.active = false;
+  });
+  memoryStress.timer = setTimeout(() => stopMemoryStress("completed"), memoryStress.durationMs);
+  memoryStress.timer.unref();
+  return memoryStressStatus("started");
+}
+
+function memoryStressStatus(reason = "status") {
+  const elapsedMs = memoryStress.startedAt ? Date.now() - memoryStress.startedAt : 0;
+  return {
+    active: memoryStress.active,
+    reason,
+    startedAt: memoryStress.startedAt ? new Date(memoryStress.startedAt).toISOString() : null,
+    elapsedMs,
+    durationMs: memoryStress.durationMs,
+    targetMb: memoryStress.targetMb,
+    heldMb: memoryStress.heldMb,
+    cycles: memoryStress.cycles,
+    checksum: memoryStress.checksum
+  };
+}
+
+async function getPortableSensorSweep() {
+  const snapshot = await getPortableSnapshot();
+  return {
+    generatedAt: new Date().toISOString(),
+    score: 100,
+    cpu: { loadPct: snapshot.cpu?.loadPct ?? null },
+    gpu: snapshot.gpu || null,
+    memory: snapshot.memory || null
+  };
+}
+
 async function getSensorSweep() {
+  if (process.platform !== "win32") return getPortableSensorSweep();
   const out = await runPowerShell(psSensorSweep, 12000);
   return JSON.parse(out);
+}
+
+function getStressStatus(reason = "status") {
+  return {
+    generatedAt: new Date().toISOString(),
+    reason,
+    active: cpuStress.active || memoryStress.active,
+    engines: {
+      cpu: cpuStressStatus(reason),
+      memory: memoryStressStatus(reason),
+      gpu: {
+        active: false,
+        engine: "browser-webgl",
+        reason: "controlled by the UI render loop"
+      }
+    }
+  };
+}
+
+async function getStressCapabilities() {
+  const bridges = getNativeBridges();
+  const byId = Object.fromEntries(bridges.tools.map((tool) => [tool.id, tool]));
+  return {
+    generatedAt: new Date().toISOString(),
+    platform: bridges.platform,
+    builtIn: [
+      { id: "cpu-node-workers", target: "cpu", available: true, safe: true, description: "Multi-process SHA-256 CPU load using local Node.js workers." },
+      { id: "memory-node-allocator", target: "memory", available: true, safe: true, description: "Bounded server-side RAM allocator with page touching and checksum loop." },
+      { id: "gpu-browser-webgl", target: "gpu", available: true, safe: true, description: "Browser/Electron WebGL render loop, controlled by the visible Lab canvas." },
+      { id: "sensor-sweep", target: "sensors", available: true, safe: true, description: "Cross-platform sensor snapshot with Windows PowerShell or portable OS commands." }
+    ],
+    native: ["occt", "furmark", "prime95", "y-cruncher", "memtest86", "hwinfo", "librehardwaremonitor", "lm-sensors", "powermetrics", "nvidia-smi"]
+      .map((id) => byId[id])
+      .filter(Boolean)
+      .map((tool) => ({
+        id: tool.id,
+        name: tool.name,
+        category: tool.category,
+        available: tool.available,
+        supported: tool.supported,
+        path: tool.executable?.path || null,
+        capabilities: tool.capabilities,
+        commands: tool.commands
+      }))
+  };
+}
+
+async function startStressSession(options = {}) {
+  const durationSec = Number(options.durationSec) || 60;
+  const result = {
+    generatedAt: new Date().toISOString(),
+    durationSec,
+    started: {}
+  };
+  if (options.cpu) result.started.cpu = startCpuStress({ durationSec, workers: options.workers });
+  if (options.memory) result.started.memory = startMemoryStress({ durationSec, targetMb: options.targetMb });
+  result.status = getStressStatus("started");
+  return result;
+}
+
+function stopStressSession(reason = "stopped") {
+  const cpu = stopCpuStress(reason);
+  const memory = stopMemoryStress(reason);
+  return {
+    generatedAt: new Date().toISOString(),
+    reason,
+    stopped: { cpu, memory },
+    status: getStressStatus(reason)
+  };
 }
 
 function readJsonBody(req) {
@@ -1149,6 +1361,34 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       sendJson(res, 500, { error: error.message });
     }
+    return;
+  }
+  if (url.pathname === "/api/stress/capabilities") {
+    try {
+      sendJson(res, 200, await getStressCapabilities());
+    } catch (error) {
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+  if (url.pathname === "/api/stress/start" && req.method === "POST") {
+    try {
+      sendJson(res, 200, await startStressSession(await readJsonBody(req)));
+    } catch (error) {
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+  if (url.pathname === "/api/stress/stop" && req.method === "POST") {
+    try {
+      sendJson(res, 200, stopStressSession("stopped"));
+    } catch (error) {
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+  if (url.pathname === "/api/stress/status") {
+    sendJson(res, 200, getStressStatus());
     return;
   }
   if (url.pathname === "/api/stress/cpu/start" && req.method === "POST") {

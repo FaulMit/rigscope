@@ -12,6 +12,9 @@ const state = {
     workers: [],
     memoryBlocks: [],
     serverCpu: false,
+    serverMemory: false,
+    memoryHeldMb: 0,
+    memoryCycles: 0,
     cpuOps: 0,
     gpuFrames: 0,
     lastSensors: null,
@@ -334,42 +337,72 @@ function renderStressPanel() {
   const elapsed = stress.active ? performance.now() - stress.startedAt : stress.result?.elapsedMs || 0;
   const progress = stress.active ? clamp(elapsed / Math.max(stress.durationMs, 1) * 100) : 0;
   const modes = stress.active
-    ? [stress.serverCpu ? "CPU" : null, stress.memoryBlocks.length ? "RAM" : null, stress.raf ? "GPU" : null].filter(Boolean).join("+")
+    ? [stress.serverCpu ? "CPU" : null, stress.serverMemory || stress.memoryBlocks.length ? "RAM" : null, stress.raf ? "GPU" : null].filter(Boolean).join("+")
     : "idle";
   $("stressProgressValue").textContent = stress.active ? pct(progress) : stress.result ? `${stress.result.score}/100` : "0%";
   $("stressModeLabel").textContent = stress.active ? modes || "running" : stress.result ? "last run" : "idle";
   $("stressElapsed").textContent = stress.active ? `${formatSeconds(elapsed)} / ${formatSeconds(stress.durationMs)}` : stress.result?.duration || "0s";
   $("stressCpuOps").textContent = stress.cpuOps ? stress.cpuOps.toLocaleString("en-US") : "-";
-  $("stressMemoryHeld").textContent = `${Math.round(stress.memoryBlocks.reduce((sum, block) => sum + block.byteLength, 0) / 1024 / 1024)} MB`;
+  const browserMemoryMb = Math.round(stress.memoryBlocks.reduce((sum, block) => sum + block.byteLength, 0) / 1024 / 1024);
+  $("stressMemoryHeld").textContent = `${Math.max(stress.memoryHeldMb || 0, browserMemoryMb)} MB`;
   $("stressGpuFrames").textContent = stress.gpuFrames ? stress.gpuFrames.toLocaleString("en-US") : "-";
   setBar("stressProgressBar", stress.active ? progress : stress.result ? stress.result.score : 0);
   $("stressCpuState").textContent = stress.active && stress.serverCpu ? "server load" : $("stressCpuToggle").checked ? "armed" : "off";
-  $("stressMemoryState").textContent = stress.active && stress.memoryBlocks.length ? "holding" : $("stressMemoryToggle").checked ? "armed" : "off";
+  $("stressMemoryState").textContent = stress.active && stress.serverMemory ? `${stress.memoryCycles || 0} cycles` : stress.active && stress.memoryBlocks.length ? "holding" : $("stressMemoryToggle").checked ? "armed" : "off";
   $("stressGpuState").textContent = stress.active && stress.raf ? "rendering" : $("stressGpuToggle").checked ? "armed" : "off";
 }
 
 async function startCpuStress(durationSec) {
   const threads = navigator.hardwareConcurrency || 4;
-  const response = await fetch("/api/stress/cpu/start", {
+  const response = await fetch("/api/stress/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ durationSec, workers: threads })
+    body: JSON.stringify({ cpu: true, memory: false, durationSec, workers: threads })
   });
   if (!response.ok) throw new Error(await response.text());
-  const status = await response.json();
+  const result = await response.json();
+  const status = result.started?.cpu || {};
   state.stress.serverCpu = true;
   state.stress.cpuOps = status.ops || 0;
   $("stressCpuState").textContent = `${status.workers} workers`;
 }
 
+async function startServerStress(options) {
+  const threads = navigator.hardwareConcurrency || 4;
+  const response = await fetch("/api/stress/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...options, workers: threads })
+  });
+  if (!response.ok) throw new Error(await response.text());
+  const result = await response.json();
+  if (result.started?.cpu) {
+    state.stress.serverCpu = true;
+    state.stress.cpuOps = result.started.cpu.ops || 0;
+    $("stressCpuState").textContent = `${result.started.cpu.workers} workers`;
+  }
+  if (result.started?.memory) {
+    state.stress.serverMemory = true;
+    state.stress.memoryHeldMb = result.started.memory.heldMb || 0;
+    state.stress.memoryCycles = result.started.memory.cycles || 0;
+    $("stressMemoryState").textContent = `${result.started.memory.targetMb} MB target`;
+  }
+  return result;
+}
+
 async function pollCpuStress() {
-  if (!state.stress.active || !state.stress.serverCpu) return;
+  if (!state.stress.active || (!state.stress.serverCpu && !state.stress.serverMemory)) return;
   try {
-    const response = await fetch("/api/stress/cpu/status", { cache: "no-store" });
+    const response = await fetch("/api/stress/status", { cache: "no-store" });
     if (!response.ok) return;
     const status = await response.json();
-    state.stress.cpuOps = status.ops || state.stress.cpuOps;
-    $("stressCpuState").textContent = status.active ? `${status.workers} workers` : "finished";
+    const cpu = status.engines?.cpu || {};
+    const memory = status.engines?.memory || {};
+    state.stress.cpuOps = cpu.ops || state.stress.cpuOps;
+    state.stress.memoryHeldMb = memory.heldMb || state.stress.memoryHeldMb;
+    state.stress.memoryCycles = memory.cycles || state.stress.memoryCycles;
+    $("stressCpuState").textContent = cpu.active ? `${cpu.workers} workers` : state.stress.serverCpu ? "finished" : "off";
+    $("stressMemoryState").textContent = memory.active ? `${memory.cycles || 0} cycles` : state.stress.serverMemory ? "finished" : "off";
   } catch (error) {
     console.error(error);
   }
@@ -527,13 +560,15 @@ async function startStressTest() {
     result: null,
     memoryBlocks: [],
     workers: [],
-    serverCpu: false
+    serverCpu: false,
+    serverMemory: false,
+    memoryHeldMb: 0,
+    memoryCycles: 0
   });
   setStressControls(true);
-  setStressLog([`started ${options.durationSec}s`, options.cpu ? "CPU workers" : "CPU off", options.memory ? "RAM allocator" : "RAM off", options.gpu ? "GPU render" : "GPU off"]);
+  setStressLog([`started ${options.durationSec}s`, options.cpu ? "CPU workers" : "CPU off", options.memory ? "RAM worker" : "RAM off", options.gpu ? "GPU render" : "GPU off"]);
   try {
-    if (options.cpu) await startCpuStress(options.durationSec);
-    if (options.memory) startMemoryStress();
+    if (options.cpu || options.memory) await startServerStress(options);
     if (options.gpu) startGpuStress();
   } catch (error) {
     console.error(error);
@@ -554,8 +589,8 @@ async function startStressTest() {
 function stopStressTest(reason = "stopped") {
   if (!state.stress.active) return;
   const elapsedMs = performance.now() - state.stress.startedAt;
-  if (state.stress.serverCpu) {
-    fetch("/api/stress/cpu/stop", { method: "POST", cache: "no-store" }).catch(console.error);
+  if (state.stress.serverCpu || state.stress.serverMemory) {
+    fetch("/api/stress/stop", { method: "POST", cache: "no-store" }).catch(console.error);
   }
   state.stress.active = false;
   clearInterval(state.stress.timer);
@@ -575,12 +610,16 @@ function stopStressTest(reason = "stopped") {
     duration: formatSeconds(elapsedMs),
     cpuOps: state.stress.cpuOps,
     gpuFrames: state.stress.gpuFrames,
-    memoryMb: Math.round(state.stress.memoryBlocks.reduce((sum, block) => sum + block.byteLength, 0) / 1024 / 1024),
+    memoryMb: Math.max(state.stress.memoryHeldMb || 0, Math.round(state.stress.memoryBlocks.reduce((sum, block) => sum + block.byteLength, 0) / 1024 / 1024)),
+    memoryCycles: state.stress.memoryCycles,
     sensors
   };
   state.stress.memoryBlocks = [];
   state.stress.workers = [];
   state.stress.serverCpu = false;
+  state.stress.serverMemory = false;
+  state.stress.memoryHeldMb = 0;
+  state.stress.memoryCycles = 0;
   state.stress.raf = null;
   setStressControls(false);
   setStressLog([
