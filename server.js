@@ -34,6 +34,36 @@ const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 };
 
+function unavailableUpdateStatus() {
+  return {
+    supported: false,
+    status: "unavailable",
+    currentVersion: require("./package.json").version,
+    availableVersion: null,
+    downloaded: false,
+    progress: null,
+    error: "Updates are available only in the packaged desktop app.",
+    lastCheckedAt: null
+  };
+}
+
+function unavailableUpdateAction() {
+  const error = new Error("Updates are available only in the packaged desktop app.");
+  error.code = "UPDATES_UNAVAILABLE";
+  throw error;
+}
+
+let updateController = {
+  status: unavailableUpdateStatus,
+  check: unavailableUpdateAction,
+  download: unavailableUpdateAction,
+  install: unavailableUpdateAction
+};
+
+function setUpdateController(controller) {
+  updateController = controller || updateController;
+}
+
 const psSnapshot = String.raw`
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -1545,6 +1575,38 @@ const server = http.createServer(async (req, res) => {
     });
     return;
   }
+  if (url.pathname === "/api/updates/status") {
+    try {
+      sendJson(res, 200, updateController.status());
+    } catch (error) {
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+  if (url.pathname === "/api/updates/check" && req.method === "POST") {
+    try {
+      sendJson(res, 200, await updateController.check());
+    } catch (error) {
+      sendJson(res, error.code === "UPDATES_UNAVAILABLE" ? 409 : 500, { error: error.message });
+    }
+    return;
+  }
+  if (url.pathname === "/api/updates/download" && req.method === "POST") {
+    try {
+      sendJson(res, 200, await updateController.download());
+    } catch (error) {
+      sendJson(res, error.code === "UPDATES_UNAVAILABLE" ? 409 : 500, { error: error.message });
+    }
+    return;
+  }
+  if (url.pathname === "/api/updates/install" && req.method === "POST") {
+    try {
+      sendJson(res, 200, updateController.install());
+    } catch (error) {
+      sendJson(res, error.code === "UPDATES_UNAVAILABLE" || error.code === "UPDATE_NOT_DOWNLOADED" ? 409 : 500, { error: error.message });
+    }
+    return;
+  }
   if (url.pathname === "/api/snapshot") {
     try {
       sendJson(res, 200, await getSnapshot());
@@ -1755,4 +1817,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { startServer, server };
+module.exports = { startServer, server, setUpdateController };

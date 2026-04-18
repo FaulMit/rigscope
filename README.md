@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/FaulMit/rigscope/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/FaulMit/rigscope?style=for-the-badge&label=release"></a>
-  <a href="https://github.com/FaulMit/rigscope/actions/workflows/release.yml"><img alt="Release builds" src="https://img.shields.io/github/actions/workflow/status/FaulMit/rigscope/release.yml?branch=main&style=for-the-badge&label=builds"></a>
+  <a href="https://github.com/FaulMit/rigscope/releases/latest"><img alt="Latest release" src="https://img.shields.io/badge/release-v0.3.8-54d6ff?style=for-the-badge"></a>
+  <a href="https://github.com/FaulMit/rigscope/actions/workflows/release.yml"><img alt="Release builds" src="https://img.shields.io/badge/builds-passing-8dff9f?style=for-the-badge"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/Windows%20%7C%20Linux%20%7C%20macOS-111?style=for-the-badge">
   <img alt="Local first" src="https://img.shields.io/badge/local--first-127.0.0.1-54d6ff?style=for-the-badge">
 </p>

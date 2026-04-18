@@ -71,6 +71,13 @@ h2 { font-size: 20px; font-weight: 720; }
   color: var(--muted);
 }
 
+.update-status {
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+  color: var(--cyan);
+  white-space: nowrap;
+}
+
 .actions {
   display: flex;
   align-items: center;

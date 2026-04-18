@@ -25,7 +25,8 @@ const state = {
   },
   selectedSetup: "local",
   savedProfile: null,
-  community: { profiles: [], status: "offline", mode: "local", publishing: "local-only" }
+  community: { profiles: [], status: "offline", mode: "local", publishing: "local-only" },
+  updates: { supported: false, status: "unknown", currentVersion: "-", availableVersion: null }
 };
 
 const demoSetups = [
@@ -1257,6 +1258,67 @@ async function loadCommunity() {
   }
 }
 
+function renderUpdateStatus() {
+  const el = $("updateStatus");
+  const button = $("updateButton");
+  if (!el || !button) return;
+  const update = state.updates || {};
+  const version = update.availableVersion ? ` ${update.availableVersion}` : "";
+  const progress = update.progress?.percent !== undefined ? ` ${update.progress.percent}%` : "";
+  const labels = {
+    unavailable: "desktop only",
+    idle: `v${update.currentVersion || "-"}`,
+    checking: "checking...",
+    current: `current v${update.currentVersion || "-"}`,
+    available: `update${version}`,
+    downloading: `downloading${progress}`,
+    downloaded: `ready${version}`,
+    installing: "restarting...",
+    error: "update failed",
+    unknown: "updates"
+  };
+  el.textContent = labels[update.status] || update.status || "updates";
+  el.title = update.error || "Desktop auto-update status";
+  button.disabled = !update.supported || ["checking", "downloading", "installing"].includes(update.status);
+  button.title = !update.supported
+    ? "Updates are available in the packaged desktop app"
+    : update.status === "available"
+    ? "Download update"
+    : update.status === "downloaded"
+      ? "Install update and restart"
+      : "Check for updates";
+}
+
+async function loadUpdateStatus() {
+  try {
+    const response = await fetch("/api/updates/status", { cache: "no-store" });
+    if (!response.ok) throw new Error(await parseApiError(response));
+    state.updates = await response.json();
+  } catch (error) {
+    state.updates = { supported: false, status: "error", error: error.message };
+  }
+  renderUpdateStatus();
+}
+
+async function updateAction() {
+  const status = state.updates?.status;
+  const endpoint = status === "available"
+    ? "/api/updates/download"
+    : status === "downloaded"
+      ? "/api/updates/install"
+      : "/api/updates/check";
+  try {
+    state.updates = { ...state.updates, status: status === "available" ? "downloading" : status === "downloaded" ? "installing" : "checking" };
+    renderUpdateStatus();
+    const response = await fetch(endpoint, { method: "POST", cache: "no-store" });
+    if (!response.ok) throw new Error(await parseApiError(response));
+    state.updates = await response.json();
+  } catch (error) {
+    state.updates = { ...state.updates, status: "error", error: error.message };
+  }
+  renderUpdateStatus();
+}
+
 async function pollNativeRunner() {
   try {
     const response = await fetch("/api/native-runners/status", { cache: "no-store" });
@@ -1400,6 +1462,7 @@ document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => setView(tab.dataset.view));
 });
 $("refreshButton").addEventListener("click", refresh);
+$("updateButton").addEventListener("click", updateAction);
 $("cpuBenchButton").addEventListener("click", runCpuBench);
 $("memoryBenchButton").addEventListener("click", runMemoryBench);
 $("gpuBenchButton").addEventListener("click", runGpuBench);
@@ -1423,6 +1486,8 @@ refresh();
 loadToolkit();
 loadNativeRunners();
 loadCommunity();
+loadUpdateStatus();
 setView(location.hash.slice(1) || "overview");
 setInterval(refresh, 7000);
 setInterval(loadCommunity, 60000);
+setInterval(loadUpdateStatus, 5000);

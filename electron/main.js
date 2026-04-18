@@ -1,5 +1,6 @@
 const { app, BrowserWindow, shell } = require("electron");
-const { startServer } = require("../server");
+const { startServer, setUpdateController } = require("../server");
+const { createUpdateController } = require("./updates");
 
 const APP_URL = "http://127.0.0.1:8787";
 let mainWindow = null;
@@ -48,12 +49,13 @@ if (!gotSingleInstanceLock) {
   });
 
   app.whenReady().then(async () => {
-  await startServer();
-  createWindow();
+    setUpdateController(createUpdateController());
+    await startServer();
+    createWindow();
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
   }).catch((error) => {
     console.error(error);
     app.quit();

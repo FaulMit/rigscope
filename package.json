@@ -1,9 +1,13 @@
 {
   "name": "rigscope",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "private": true,
   "description": "Cross-platform local hardware inventory, diagnostics, benchmark, and stress-test dashboard.",
   "main": "electron/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FaulMit/rigscope.git"
+  },
   "author": {
     "name": "RigScope",
     "email": "releases@rigscope.local"
@@ -32,6 +36,9 @@
   "engines": {
     "node": ">=20"
   },
+  "dependencies": {
+    "electron-updater": "^6.8.3"
+  },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
     "electron": "^32.3.3",
@@ -54,6 +61,13 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "FaulMit",
+        "repo": "rigscope"
+      }
+    ],
     "win": {
       "icon": "build/icon.ico",
       "target": [
