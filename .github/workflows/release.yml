@@ -99,8 +99,21 @@ jobs:
           "CSC_KEY_PASSWORD=$env:WIN_CSC_KEY_PASSWORD" >> $env:GITHUB_ENV
 
       - name: Build packages
-        run: ${{ matrix.script }}
+        shell: pwsh
+        run: |
+          $exitCode = 1
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            Write-Host "Build attempt $attempt/3: $env:BUILD_SCRIPT"
+            Invoke-Expression $env:BUILD_SCRIPT
+            $exitCode = $LASTEXITCODE
+            if ($exitCode -eq 0) {
+              exit 0
+            }
+            Start-Sleep -Seconds (20 * $attempt)
+          }
+          exit $exitCode
         env:
+          BUILD_SCRIPT: ${{ matrix.script }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
           ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
 
