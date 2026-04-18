@@ -50,6 +50,21 @@ RigScope is local-first. It does not send telemetry anywhere. The server binds t
 
 Some identifiers such as MAC addresses are partially masked in the UI. Exported reports are intended for local use; review them before sharing publicly.
 
+## Community Score Sync
+
+The Community tab works offline by default. `Save / Sync Profile` stores only a reduced public score card: setup name, owner label, RigScore, CPU/GPU/RAM/storage summary, OS, board, and benchmark numbers. It does not publish raw hardware inventory.
+
+Optional GitHub-backed sync can be enabled on the local server:
+
+```powershell
+$env:RIGSCOPE_COMMUNITY_FEED_URL="https://gist.githubusercontent.com/<user>/<gist>/raw/rigscope-community.json"
+$env:RIGSCOPE_GITHUB_GIST_ID="<gist-id>"
+$env:RIGSCOPE_GITHUB_TOKEN="<fine-grained-token>"
+npm start
+```
+
+`RIGSCOPE_COMMUNITY_FEED_URL` reads a public JSON leaderboard from GitHub raw/gist. `RIGSCOPE_GITHUB_GIST_ID` plus `RIGSCOPE_GITHUB_TOKEN` enables publishing through the backend only; tokens are never accepted by or stored in the browser UI.
+
 ## Current Sections
 
 - Overview

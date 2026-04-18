@@ -119,9 +119,23 @@ function getStatus(reason = "status") {
   };
 }
 
+function isChildAlive(child) {
+  if (!child || !child.pid || child.exitCode !== null || child.signalCode !== null) return false;
+  try {
+    process.kill(child.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function startProfile(options = {}) {
   if (options.acknowledgement !== ACK) {
     throw new Error(`Native stress launch requires acknowledgement "${ACK}".`);
+  }
+  if (nativeRunner.active && !isChildAlive(nativeRunner.child)) {
+    nativeRunner.active = false;
+    nativeRunner.child = null;
   }
   if (nativeRunner.active) {
     throw new Error(`Native runner is already active: ${nativeRunner.profileId}.`);

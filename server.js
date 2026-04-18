@@ -7,8 +7,16 @@ const { detectNativeBridges } = require("./native-bridges");
 const nativeRunners = require("./native-runners");
 
 const PORT = Number(process.env.PORT || 8787);
+const HOST = "127.0.0.1";
+const APP_URL = `http://${HOST}:${PORT}`;
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, "public");
+const COMMUNITY_DIR = path.join(os.homedir(), ".rigscope");
+const COMMUNITY_FILE = path.join(COMMUNITY_DIR, "community-profiles.json");
+const COMMUNITY_FEED_URL = process.env.RIGSCOPE_COMMUNITY_FEED_URL || process.env.RIGSCOPE_COMMUNITY_RAW_URL || "";
+const GITHUB_GIST_ID = process.env.RIGSCOPE_GITHUB_GIST_ID || "";
+const GITHUB_TOKEN = process.env.RIGSCOPE_GITHUB_TOKEN || "";
+const GIST_FILENAME = process.env.RIGSCOPE_GITHUB_GIST_FILE || "rigscope-community.json";
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -16,6 +24,13 @@ const MIME = {
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml; charset=utf-8"
+};
+
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "X-Frame-Options": "DENY",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 };
 
 const psSnapshot = String.raw`
@@ -41,6 +56,19 @@ function Mask-Id($v) {
 function Bytes-To-Gb($v) {
   if ($null -eq $v -or $v -eq 0) { return $null }
   return [math]::Round($v / 1GB, 1)
+}
+
+function Date-Text($v) {
+  if ($null -eq $v) { return $null }
+  try {
+    if ($v -is [datetime]) { return $v.ToString("yyyy-MM-dd") }
+    $s = ($v -as [string]).Trim()
+    if ([string]::IsNullOrWhiteSpace($s)) { return $null }
+    if ($s -match '^\d{14}') { return "$($s.Substring(0, 4))-$($s.Substring(4, 2))-$($s.Substring(6, 2))" }
+    return $s
+  } catch {
+    return $null
+  }
 }
 
 $gpu = $null
@@ -188,7 +216,7 @@ $gpus = @($videoControllers | ForEach-Object {
     adapterCompatibility = $_.AdapterCompatibility
     videoProcessor = $_.VideoProcessor
     driverVersion = $_.DriverVersion
-    driverDate = if ($_.DriverDate) { ([Management.ManagementDateTimeConverter]::ToDateTime($_.DriverDate)).ToString("yyyy-MM-dd") } else { $null }
+    driverDate = Date-Text $_.DriverDate
     vramMb = if ($_.PNPDeviceID -eq $video.PNPDeviceID -and $gpu -and $gpu.memTotal) { $gpu.memTotal } else { [math]::Round($_.AdapterRAM / 1MB, 0) }
     currentRefreshRate = $_.CurrentRefreshRate
     currentResolution = if ($_.CurrentHorizontalResolution -and $_.CurrentVerticalResolution) { "$($_.CurrentHorizontalResolution)x$($_.CurrentVerticalResolution)" } else { $null }
@@ -413,7 +441,7 @@ $memUsedMb = $memTotalMb - $memFreeMb
     gpu = [ordered]@{
       name = $video.Name
       driverVersion = $video.DriverVersion
-      driverDate = if ($video.DriverDate) { ([Management.ManagementDateTimeConverter]::ToDateTime($video.DriverDate)).ToString("yyyy-MM-dd") } else { $null }
+      driverDate = Date-Text $video.DriverDate
       videoProcessor = $video.VideoProcessor
       vramMb = if ($gpu -and $gpu.memTotal) { $gpu.memTotal } else { [math]::Round($video.AdapterRAM / 1MB, 0) }
     }
@@ -1181,6 +1209,146 @@ function getStressStatus(reason = "status") {
   };
 }
 
+function safeText(value, fallback = "-") {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string") return value.slice(0, 180);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map((item) => safeText(item, "")).filter(Boolean).join(", ").slice(0, 180) || fallback;
+  if (typeof value === "object") {
+    return safeText(value.name || value.label || value.caption || value.value || JSON.stringify(value).slice(0, 180), fallback);
+  }
+  return fallback;
+}
+
+function sanitizeProfile(profile = {}) {
+  const score = Math.max(0, Math.min(100000, Math.round(Number(profile.score) || 0)));
+  const bench = profile.bench && typeof profile.bench === "object" ? profile.bench : {};
+  return {
+    id: safeText(profile.id || `setup-${Date.now()}`).replace(/[^a-zA-Z0-9_.:-]/g, "-").slice(0, 80),
+    name: safeText(profile.name || "Unnamed Rig", "Unnamed Rig"),
+    owner: safeText(profile.owner || "anonymous", "anonymous"),
+    score,
+    cpu: safeText(profile.cpu),
+    gpu: safeText(profile.gpu),
+    memory: safeText(profile.memory),
+    storage: safeText(profile.storage),
+    board: safeText(profile.board),
+    os: safeText(profile.os),
+    bench: {
+      cpu: safeText(bench.cpu),
+      memory: safeText(bench.memory),
+      gpu: safeText(bench.gpu),
+      sensors: safeText(bench.sensors)
+    },
+    source: safeText(profile.source || "local"),
+    generatedAt: safeText(profile.generatedAt || new Date().toISOString())
+  };
+}
+
+function dedupeProfiles(profiles) {
+  const seen = new Set();
+  return profiles
+    .map(sanitizeProfile)
+    .filter((profile) => {
+      const key = `${profile.source}:${profile.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
+    .slice(0, 200);
+}
+
+async function readLocalCommunity() {
+  try {
+    const raw = await fs.promises.readFile(COMMUNITY_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed.profiles) ? dedupeProfiles(parsed.profiles) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeLocalCommunity(profiles) {
+  await fs.promises.mkdir(COMMUNITY_DIR, { recursive: true });
+  await fs.promises.writeFile(COMMUNITY_FILE, JSON.stringify({ profiles: dedupeProfiles(profiles) }, null, 2));
+}
+
+function isAllowedCommunityUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && [
+      "raw.githubusercontent.com",
+      "gist.githubusercontent.com"
+    ].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+async function readRemoteCommunity() {
+  if (!COMMUNITY_FEED_URL || !isAllowedCommunityUrl(COMMUNITY_FEED_URL) || typeof fetch !== "function") {
+    return { profiles: [], status: COMMUNITY_FEED_URL ? "invalid feed url" : "not configured" };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(COMMUNITY_FEED_URL, { signal: controller.signal, cache: "no-store" });
+    if (!response.ok) return { profiles: [], status: `feed ${response.status}` };
+    const payload = await response.json();
+    const profiles = Array.isArray(payload) ? payload : payload.profiles;
+    return { profiles: dedupeProfiles((profiles || []).map((profile) => ({ ...profile, source: "github" }))), status: "online" };
+  } catch (error) {
+    return { profiles: [], status: error.name === "AbortError" ? "feed timeout" : "feed failed" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function publishCommunityProfile(profile) {
+  const local = await readLocalCommunity();
+  const publicProfile = sanitizeProfile({ ...profile, source: "local" });
+  const profiles = dedupeProfiles([publicProfile, ...local.filter((item) => item.id !== publicProfile.id)]);
+  await writeLocalCommunity(profiles);
+
+  if (!GITHUB_GIST_ID || !GITHUB_TOKEN || typeof fetch !== "function") {
+    return { profile: publicProfile, status: "saved locally", github: "not configured" };
+  }
+
+  const gistProfiles = dedupeProfiles(profiles.map((item) => ({ ...item, source: "github" })));
+  const response = await fetch(`https://api.github.com/gists/${encodeURIComponent(GITHUB_GIST_ID)}`, {
+    method: "PATCH",
+    headers: {
+      "Accept": "application/vnd.github+json",
+      "Authorization": `Bearer ${GITHUB_TOKEN}`,
+      "Content-Type": "application/json",
+      "User-Agent": "RigScope"
+    },
+    body: JSON.stringify({
+      files: {
+        [GIST_FILENAME]: {
+          content: JSON.stringify({ profiles: gistProfiles }, null, 2)
+        }
+      }
+    })
+  });
+  if (!response.ok) {
+    return { profile: publicProfile, status: "saved locally", github: `gist ${response.status}` };
+  }
+  return { profile: publicProfile, status: "saved locally and published", github: "published" };
+}
+
+async function getCommunity() {
+  const [local, remote] = await Promise.all([readLocalCommunity(), readRemoteCommunity()]);
+  return {
+    generatedAt: new Date().toISOString(),
+    mode: COMMUNITY_FEED_URL ? "github-feed" : "local",
+    publishing: GITHUB_GIST_ID && GITHUB_TOKEN ? "github-gist" : "local-only",
+    status: remote.status,
+    profiles: dedupeProfiles([...local, ...remote.profiles])
+  };
+}
+
 async function getStressCapabilities() {
   const bridges = getNativeBridges();
   const byId = Object.fromEntries(bridges.tools.map((tool) => [tool.id, tool]));
@@ -1275,6 +1443,7 @@ function openUrl(url, appMode = false) {
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
+    ...SECURITY_HEADERS,
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store"
   });
@@ -1284,6 +1453,7 @@ function sendJson(res, status, body) {
 function sendDownload(res, filename, body) {
   const payload = JSON.stringify(body, null, 2);
   res.writeHead(200, {
+    ...SECURITY_HEADERS,
     "Content-Type": "application/json; charset=utf-8",
     "Content-Disposition": `attachment; filename="${filename}"`,
     "Cache-Control": "no-store"
@@ -1294,28 +1464,38 @@ function sendDownload(res, filename, body) {
 function serveStatic(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const pathname = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
-  const file = path.normalize(path.join(PUBLIC, pathname));
+  const file = path.resolve(PUBLIC, `.${pathname}`);
 
-  if (!file.startsWith(PUBLIC)) {
-    res.writeHead(403);
+  if (!file.startsWith(`${PUBLIC}${path.sep}`) && file !== PUBLIC) {
+    res.writeHead(403, SECURITY_HEADERS);
     res.end("Forbidden");
     return;
   }
 
   fs.readFile(file, (err, data) => {
     if (err) {
-      res.writeHead(404);
+      res.writeHead(404, SECURITY_HEADERS);
       res.end("Not found");
       return;
     }
     const type = MIME[path.extname(file)] || "application/octet-stream";
-    res.writeHead(200, { "Content-Type": type });
+    res.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": type });
     res.end(data);
   });
 }
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
+  if (url.pathname === "/api/health") {
+    sendJson(res, 200, {
+      ok: true,
+      app: "RigScope",
+      pid: process.pid,
+      version: require("./package.json").version,
+      generatedAt: new Date().toISOString()
+    });
+    return;
+  }
   if (url.pathname === "/api/snapshot") {
     try {
       sendJson(res, 200, await getSnapshot());
@@ -1425,6 +1605,22 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 200, nativeRunners.getStatus());
     return;
   }
+  if (url.pathname === "/api/community") {
+    try {
+      sendJson(res, 200, await getCommunity());
+    } catch (error) {
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+  if (url.pathname === "/api/community/profile" && req.method === "POST") {
+    try {
+      sendJson(res, 200, await publishCommunityProfile(await readJsonBody(req)));
+    } catch (error) {
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
   if (url.pathname === "/api/stress/cpu/start" && req.method === "POST") {
     try {
       sendJson(res, 200, startCpuStress(await readJsonBody(req)));
@@ -1457,22 +1653,56 @@ const server = http.createServer(async (req, res) => {
   }
   serveStatic(req, res);
 });
+server.requestTimeout = 15000;
+server.headersTimeout = 18000;
+server.keepAliveTimeout = 5000;
 
 function startServer({ open = false, appMode = false } = {}) {
-  if (server.listening) return server;
-  server.listen(PORT, "127.0.0.1", () => {
-    const url = `http://127.0.0.1:${PORT}`;
-    console.log(`RigScope running on ${url}`);
-    if (open) openUrl(url, false);
-    if (appMode) openUrl(url, true);
+  if (server.listening) return Promise.resolve({ server, url: APP_URL, reused: false });
+  return new Promise((resolve, reject) => {
+    const onError = (error) => {
+      if (error.code === "EADDRINUSE") {
+        const req = http.get(`${APP_URL}/api/health`, { timeout: 1200 }, (res) => {
+          const chunks = [];
+          res.on("data", (chunk) => chunks.push(chunk));
+          res.on("end", () => {
+            try {
+              const health = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+              if (health.app === "RigScope") {
+                console.log(`RigScope is already running on ${APP_URL}`);
+                if (open) openUrl(APP_URL, false);
+                if (appMode) openUrl(APP_URL, true);
+                resolve({ server: null, url: APP_URL, reused: true });
+                return;
+              }
+            } catch {}
+            reject(new Error(`Port ${PORT} is already in use by another process.`));
+          });
+        });
+        req.on("timeout", () => req.destroy(new Error("health check timeout")));
+        req.on("error", () => reject(new Error(`Port ${PORT} is already in use and does not look like RigScope.`)));
+        return;
+      }
+      reject(error);
+    };
+    server.once("error", onError);
+    server.listen(PORT, HOST, () => {
+      server.off("error", onError);
+      console.log(`RigScope running on ${APP_URL}`);
+      if (open) openUrl(APP_URL, false);
+      if (appMode) openUrl(APP_URL, true);
+      resolve({ server, url: APP_URL, reused: false });
+    });
   });
-  return server;
 }
 
 if (require.main === module) {
   startServer({
     open: process.argv.includes("--open"),
     appMode: process.argv.includes("--app")
+  }).catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
   });
 }
 

@@ -24,7 +24,8 @@ const state = {
     result: null
   },
   selectedSetup: "local",
-  savedProfile: null
+  savedProfile: null,
+  community: { profiles: [], status: "offline", mode: "local", publishing: "local-only" }
 };
 
 const demoSetups = [
@@ -68,13 +69,46 @@ const clamp = (n, min = 0, max = 100) => Math.max(min, Math.min(max, Number(n) |
 const pct = (n) => `${Math.round(clamp(n))}%`;
 const mb = (n) => `${Math.round(Number(n) || 0)} MB`;
 const gb = (n) => `${Number(n || 0).toFixed(1)} GB`;
-const esc = (value) => String(value ?? "-").replace(/[&<>"']/g, (ch) => ({
+const isMissing = (value) => value === null || value === undefined || value === "" || value === "null" || value === "undefined";
+const prettyValue = (value, fallback = "-") => {
+  if (isMissing(value)) return fallback;
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : fallback;
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  if (Array.isArray(value)) {
+    const text = value.map((item) => prettyValue(item, "")).filter(Boolean).join(", ");
+    return text || fallback;
+  }
+  if (typeof value === "object") {
+    const preferred = value.name ?? value.label ?? value.caption ?? value.value ?? value.status ?? value.id;
+    if (!isMissing(preferred)) return prettyValue(preferred, fallback);
+    try {
+      return JSON.stringify(value).replace(/[{}"]/g, "").slice(0, 180) || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  const text = String(value).trim();
+  if (!text || text === "[object Object]") return fallback;
+  return text;
+};
+const esc = (value) => prettyValue(value).replace(/[&<>"']/g, (ch) => ({
   "&": "&amp;",
   "<": "&lt;",
   ">": "&gt;",
   "\"": "&quot;",
   "'": "&#39;"
 }[ch]));
+const safeEsc = (value, fallback = "-") => esc(prettyValue(value, fallback));
+
+async function parseApiError(response) {
+  const text = await response.text();
+  try {
+    const payload = JSON.parse(text);
+    return prettyValue(payload.error || payload.message || text, "не удалось");
+  } catch {
+    return prettyValue(text, "не удалось");
+  }
+}
 
 function setBar(id, value) {
   const el = $(id);
@@ -412,7 +446,7 @@ async function startCpuStress(durationSec) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ cpu: true, memory: false, durationSec, workers: threads })
   });
-  if (!response.ok) throw new Error(await response.text());
+  if (!response.ok) throw new Error(await parseApiError(response));
   const result = await response.json();
   const status = result.started?.cpu || {};
   state.stress.serverCpu = true;
@@ -427,7 +461,7 @@ async function startServerStress(options) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...options, workers: threads })
   });
-  if (!response.ok) throw new Error(await response.text());
+  if (!response.ok) throw new Error(await parseApiError(response));
   const result = await response.json();
   if (result.started?.cpu) {
     state.stress.serverCpu = true;
@@ -717,17 +751,17 @@ function localProfile() {
   const score = calculateRigScore().score || state.savedProfile?.score || 0;
   return {
     id: "local",
-    name: `${inv.gpu?.name || "Local"} Rig`,
-    owner: inv.system?.user || "you",
+    name: `${prettyValue(inv.gpu?.name, "Local")} Rig`,
+    owner: prettyValue(inv.system?.user, "you"),
     score,
-    cpu: inv.cpu?.name || "-",
-    gpu: inv.gpu?.name || "-",
-    memory: `${inv.memory?.totalGb || "-"} GB`,
+    cpu: prettyValue(inv.cpu?.name),
+    gpu: prettyValue(inv.gpu?.name),
+    memory: `${prettyValue(inv.memory?.totalGb)} GB`,
     storage: `${inv.physicalDisks?.length || 0} drives`,
-    board: inv.board?.product || "-",
-    os: inv.os?.caption || "-",
+    board: prettyValue(inv.board?.product),
+    os: prettyValue(inv.os?.caption),
     bench: {
-      cpu: state.bench.cpu?.score || "-",
+      cpu: prettyValue(state.bench.cpu?.score),
       memory: state.bench.memory ? `${state.bench.memory.gbps} GB/s` : "-",
       gpu: state.bench.gpu ? `${state.bench.gpu.fps} fps` : "-",
       sensors: state.bench.sensors ? sensorLine(state.bench.sensors) : "-"
@@ -738,7 +772,15 @@ function localProfile() {
 
 function setupProfiles() {
   const saved = state.savedProfile ? [state.savedProfile] : [];
-  return [localProfile(), ...saved.filter((p) => p.id !== "local-saved"), ...demoSetups];
+  const remote = state.community?.profiles || [];
+  const seen = new Set();
+  return [localProfile(), ...saved.filter((p) => p.id !== "local-saved"), ...remote, ...demoSetups]
+    .filter((profile) => {
+      const id = prettyValue(profile.id, profile.name || "setup");
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
 }
 
 function renderCommunity() {
@@ -746,7 +788,9 @@ function renderCommunity() {
   const profiles = setupProfiles().sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
   const local = localProfile();
   $("localSetupName").textContent = local.name;
-  $("localSetupMeta").textContent = local.score ? `RigScore ${local.score} · ${local.cpu}` : `${local.cpu} · run Lab tests for a public score`;
+  $("localSetupMeta").textContent = local.score
+    ? `RigScore ${local.score} · ${local.cpu} · sync ${state.community?.status || "local"}`
+    : `${local.cpu} · run Lab tests for a public score`;
   $("setupCards").innerHTML = profiles.map((profile) => `
     <button class="setup-card ${state.selectedSetup === profile.id ? "active" : ""}" data-setup-id="${esc(profile.id)}">
       <span>${esc(profile.owner)}</span>
@@ -782,9 +826,23 @@ function renderCommunity() {
   ]);
 }
 
-function saveLocalProfile() {
+async function saveLocalProfile() {
   state.savedProfile = { ...localProfile(), id: "local-saved", name: "Saved Local Snapshot" };
   localStorage.setItem("rigscope.profile", JSON.stringify(state.savedProfile));
+  try {
+    const response = await fetch("/api/community/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.savedProfile)
+    });
+    if (!response.ok) throw new Error(await parseApiError(response));
+    const result = await response.json();
+    state.community.status = result.github || result.status || "saved locally";
+    await loadCommunity();
+  } catch (error) {
+    state.community.status = "не удалось синхронизировать";
+    console.error(error);
+  }
   renderCommunity();
 }
 
@@ -1143,11 +1201,11 @@ function update(snapshot) {
 async function refresh() {
   try {
     const response = await fetch("/api/snapshot", { cache: "no-store" });
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await parseApiError(response));
     update(await response.json());
     $("livePulse").style.background = "var(--green)";
   } catch (error) {
-    $("updatedAt").textContent = "telemetry error";
+    $("updatedAt").textContent = "не удалось загрузить телеметрию";
     $("livePulse").style.background = "var(--red)";
     console.error(error);
   }
@@ -1156,7 +1214,7 @@ async function refresh() {
 async function loadToolkit() {
   try {
     const response = await fetch("/api/toolkit", { cache: "no-store" });
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await parseApiError(response));
     state.toolkit = await response.json();
     if (state.snapshot) {
       renderToolkit();
@@ -1171,13 +1229,26 @@ async function loadToolkit() {
 async function loadNativeRunners() {
   try {
     const response = await fetch("/api/native-runners", { cache: "no-store" });
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await parseApiError(response));
     const payload = await response.json();
     state.nativeRunners = payload;
     state.nativeRunnerStatus = payload.status;
     renderNativeRunners();
     if (state.snapshot) renderLab(state.snapshot);
   } catch (error) {
+    console.error(error);
+  }
+}
+
+async function loadCommunity() {
+  try {
+    const response = await fetch("/api/community", { cache: "no-store" });
+    if (!response.ok) throw new Error(await parseApiError(response));
+    state.community = await response.json();
+    if (state.snapshot) renderCommunity();
+  } catch (error) {
+    state.community = { profiles: [], status: "не удалось загрузить", mode: "local", publishing: "local-only" };
+    if (state.snapshot) renderCommunity();
     console.error(error);
   }
 }
@@ -1216,7 +1287,7 @@ async function startNativeRunner() {
         acknowledgement
       })
     });
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await parseApiError(response));
     state.nativeRunnerStatus = await response.json();
     renderNativeRunners();
     if (!state.nativeRunnerTimer) state.nativeRunnerTimer = setInterval(pollNativeRunner, 1500);
@@ -1229,7 +1300,7 @@ async function startNativeRunner() {
 async function stopNativeRunner() {
   try {
     const response = await fetch("/api/native-runners/stop", { method: "POST", cache: "no-store" });
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await parseApiError(response));
     state.nativeRunnerStatus = await response.json();
     renderNativeRunners();
   } catch (error) {
@@ -1257,14 +1328,14 @@ async function runServerBench(type, url, buttonId, statusId, runningText) {
   $(statusId).textContent = runningText;
   try {
     const response = await fetch(url, { method: "POST", cache: "no-store" });
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await parseApiError(response));
     state.bench[type] = await response.json();
     if (state.snapshot) {
       renderSuite(state.snapshot);
       renderLab(state.snapshot);
     }
   } catch (error) {
-    $(statusId).textContent = "Benchmark error";
+    $(statusId).textContent = `Не удалось: ${prettyValue(error.message, "ошибка теста")}`;
     console.error(error);
   } finally {
     button.disabled = false;
@@ -1347,5 +1418,7 @@ try {
 refresh();
 loadToolkit();
 loadNativeRunners();
+loadCommunity();
 setView(location.hash.slice(1) || "overview");
 setInterval(refresh, 7000);
+setInterval(loadCommunity, 60000);
