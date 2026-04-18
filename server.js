@@ -1063,6 +1063,21 @@ const memoryStress = {
   timer: null
 };
 
+function safeSendChildMessage(child, message) {
+  if (!child || child.exitCode !== null || child.signalCode !== null || !child.connected) return false;
+  try {
+    child.send(message, () => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function safeKillChild(child) {
+  if (!child || child.killed || child.exitCode !== null || child.signalCode !== null) return;
+  try { child.kill(); } catch {}
+}
+
 function stopCpuStress(reason = "stopped") {
   if (!cpuStress.active && !cpuStress.workers.length) {
     return cpuStressStatus(reason);
@@ -1070,15 +1085,13 @@ function stopCpuStress(reason = "stopped") {
   cpuStress.active = false;
   clearTimeout(cpuStress.timer);
   cpuStress.finalOps = Math.max(cpuStress.finalOps, cpuStress.ops);
-  cpuStress.workers.forEach((child) => {
-    try { child.send("stop"); } catch {}
+  const workers = cpuStress.workers.splice(0);
+  workers.forEach((child) => {
+    safeSendChildMessage(child, "stop");
     setTimeout(() => {
-      if (!child.killed) {
-        try { child.kill(); } catch {}
-      }
+      safeKillChild(child);
     }, 500).unref();
   });
-  cpuStress.workers = [];
   return cpuStressStatus(reason);
 }
 
@@ -1109,6 +1122,9 @@ function startCpuStress({ durationSec = 60, workers } = {}) {
       });
     });
     child.on("exit", () => {
+      child.latestOps = 0;
+    });
+    child.on("error", () => {
       child.latestOps = 0;
     });
     return child;

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1 - 2026-04-18
+
+### Fixed
+
+- Fixed a packaged desktop crash when stopping CPU stress after a worker IPC channel had already closed.
+- CPU stress shutdown is now idempotent and ignores already-exited workers while still cleaning up live ones.
+
 ## 1.0.0 - 2026-04-18
 
 RigScope 1.0 is the first public-ready desktop release line.
