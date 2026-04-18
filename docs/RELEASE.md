@@ -53,8 +53,8 @@ Manual build:
 Tagged release:
 
 ```bash
-git tag v0.3.1
-git push origin v0.3.1
+git tag v0.3.2
+git push origin v0.3.2
 ```
 
 The tag build uploads artifacts and publishes them as GitHub Release assets.

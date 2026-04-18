@@ -1,10 +1,13 @@
 {
   "name": "rigscope",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "Cross-platform local hardware inventory, diagnostics, benchmark, and stress-test dashboard.",
   "main": "electron/main.js",
-  "author": "RigScope",
+  "author": {
+    "name": "RigScope",
+    "email": "releases@rigscope.local"
+  },
   "scripts": {
     "start": "node server.js",
     "open": "node server.js --open",
