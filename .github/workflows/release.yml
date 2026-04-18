@@ -11,21 +11,36 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.platform.name }}
-    runs-on: ${{ matrix.platform.os }}
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        platform:
-          - name: Windows
+        include:
+          - name: Windows x64
             os: windows-latest
-            artifact: windows
-          - name: Linux
+            artifact: windows-x64
+            script: npm run dist:win:x64
+          - name: Windows x86
+            os: windows-latest
+            artifact: windows-ia32
+            script: npm run dist:win:ia32
+          - name: Windows ARM64
+            os: windows-latest
+            artifact: windows-arm64
+            script: npm run dist:win:arm64
+          - name: Linux x64
             os: ubuntu-latest
-            artifact: linux
-          - name: macOS
+            artifact: linux-x64
+            script: npm run dist:linux:x64
+          - name: Linux ARM64
+            os: ubuntu-latest
+            artifact: linux-arm64
+            script: npm run dist:linux:arm64
+          - name: macOS Universal
             os: macos-latest
-            artifact: macos
+            artifact: macos-universal
+            script: npm run dist:mac:universal
 
     env:
       WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
@@ -71,21 +86,8 @@ jobs:
           "CSC_LINK=$env:WIN_CSC_LINK" >> $env:GITHUB_ENV
           "CSC_KEY_PASSWORD=$env:WIN_CSC_KEY_PASSWORD" >> $env:GITHUB_ENV
 
-      - name: Build Windows packages
-        if: runner.os == 'Windows'
-        run: npm run dist:win
-        env:
-          ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
-
-      - name: Build Linux packages
-        if: runner.os == 'Linux'
-        run: npm run dist:linux
-        env:
-          ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
-
-      - name: Build macOS packages
-        if: runner.os == 'macOS'
-        run: npm run dist:mac
+      - name: Build packages
+        run: ${{ matrix.script }}
         env:
           # electron-builder reads these automatically when present. Signing and
           # notarization are skipped when the repository secrets are not set.
@@ -99,7 +101,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rigscope-${{ matrix.platform.artifact }}-${{ github.run_number }}
+          name: rigscope-${{ matrix.artifact }}-${{ github.run_number }}
           path: |
             release/**
             !release/**/builder-debug.yml

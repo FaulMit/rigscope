@@ -1,6 +1,6 @@
 {
   "name": "rigscope",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Cross-platform local hardware inventory, diagnostics, benchmark, and stress-test dashboard.",
   "main": "electron/main.js",
@@ -13,8 +13,17 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win portable nsis",
+    "dist:win:x64": "electron-builder --win portable nsis --x64",
+    "dist:win:ia32": "electron-builder --win portable nsis --ia32",
+    "dist:win:arm64": "electron-builder --win portable nsis --arm64",
+    "dist:win:all": "electron-builder --win portable nsis --x64 --ia32 --arm64",
     "dist:linux": "electron-builder --linux AppImage deb tar.gz",
-    "dist:mac": "electron-builder --mac dmg zip"
+    "dist:linux:x64": "electron-builder --linux AppImage deb tar.gz --x64",
+    "dist:linux:arm64": "electron-builder --linux AppImage deb tar.gz --arm64",
+    "dist:mac": "electron-builder --mac dmg zip",
+    "dist:mac:x64": "electron-builder --mac dmg zip --x64",
+    "dist:mac:arm64": "electron-builder --mac dmg zip --arm64",
+    "dist:mac:universal": "electron-builder --mac dmg zip --universal"
   },
   "engines": {
     "node": ">=20"
@@ -47,7 +56,11 @@
         "nsis"
       ]
     },
+    "portable": {
+      "artifactName": "RigScope-Portable-${version}-${arch}.${ext}"
+    },
     "nsis": {
+      "artifactName": "RigScope-Setup-${version}-${arch}.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
@@ -61,6 +74,7 @@
         "deb",
         "tar.gz"
       ],
+      "artifactName": "RigScope-${version}-linux-${arch}.${ext}",
       "category": "System"
     },
     "mac": {
@@ -68,6 +82,7 @@
         "dmg",
         "zip"
       ],
+      "artifactName": "RigScope-${version}-mac-${arch}.${ext}",
       "category": "public.app-category.utilities"
     }
   }

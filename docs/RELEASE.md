@@ -1,10 +1,14 @@
 # Release and Signing
 
-RigScope desktop packages are built with `electron-builder`. The GitHub Actions release workflow builds each operating system on its native runner:
+RigScope desktop packages are built with `electron-builder`. The GitHub Actions release workflow builds installer-style and portable packages for the supported desktop architectures:
 
-- Windows: portable `.exe` and NSIS installer from `npm run dist:win`
-- Linux: AppImage, `.deb`, and `.tar.gz` from `npm run dist:linux`
-- macOS: DMG and ZIP from `npm run dist:mac`
+- Windows x64, x86/ia32, and ARM64: portable `.exe` and NSIS installer
+- Linux x64 and ARM64: AppImage, `.deb`, and `.tar.gz`
+- macOS universal: DMG and ZIP for Intel and Apple Silicon
+
+The simplest Windows install path is the NSIS setup executable: `RigScope-Setup-<version>-<arch>.exe`. The no-install path is `RigScope-Portable-<version>-<arch>.exe`.
+
+32-bit desktop support is Windows-only. Modern macOS has no 32-bit app support, and Electron desktop Linux builds are treated as x64/ARM64 only.
 
 The workflow always uploads build artifacts. When a tag matching `v*` is pushed, it also attaches the generated files to a GitHub Release.
 
@@ -26,8 +30,14 @@ Or build one platform-specific target:
 
 ```powershell
 npm run dist:win
+npm run dist:win:x64
+npm run dist:win:ia32
+npm run dist:win:arm64
 npm run dist:linux
+npm run dist:linux:x64
+npm run dist:linux:arm64
 npm run dist:mac
+npm run dist:mac:universal
 ```
 
 Build output is written to `release/`.
@@ -43,8 +53,8 @@ Manual build:
 Tagged release:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.1
+git push origin v0.3.1
 ```
 
 The tag build uploads artifacts and publishes them as GitHub Release assets.

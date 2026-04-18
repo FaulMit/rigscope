@@ -103,6 +103,17 @@ Create Windows portable EXE and installer:
 npm run dist:win
 ```
 
+Create architecture-specific packages:
+
+```powershell
+npm run dist:win:x64
+npm run dist:win:ia32
+npm run dist:win:arm64
+npm run dist:linux:x64
+npm run dist:linux:arm64
+npm run dist:mac:universal
+```
+
 Create Linux AppImage, `.deb`, and `.tar.gz` packages:
 
 ```bash
@@ -121,7 +132,7 @@ Build output is written to:
 release/
 ```
 
-Cross-building has platform limits. Windows installers are best built on Windows, Linux packages on Linux, and macOS DMG/ZIP on macOS. The app code is shared; the native package formats are OS-specific.
+Cross-building has platform limits. Windows installers are best built on Windows, Linux packages on Linux, and macOS DMG/ZIP on macOS. The release workflow builds Windows x64/x86/ARM64, Linux x64/ARM64, and macOS universal packages. 32-bit support is Windows-only because modern macOS and Electron Linux desktop builds are x64/ARM64-focused.
 
 Release automation, signing secrets, and notarization placeholders are documented in [docs/RELEASE.md](docs/RELEASE.md).
 
