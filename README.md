@@ -73,6 +73,7 @@ Some identifiers such as MAC addresses are partially masked in the UI. Exported 
 - Safe browser GPU render benchmark in the Lab UI.
 - Quick sensor sweep for CPU load, memory pressure, and NVIDIA telemetry when available.
 - Unified explicit-start stress runner API with server-side CPU worker processes, bounded RAM allocation pressure, WebGL GPU render loop, sensor polling, live progress, stop control, and a stability score.
+- Opt-in native stress runner profiles for OCCT, FurMark, Prime95/mprime, and y-cruncher with detection, visible process tracking, duration caps, stop control, and explicit launch acknowledgement.
 - RigScore combines completed CPU, RAM, GPU, and sensor checks into a comparable local score.
 - Community prototype for setup profiles, local profile export, leaderboard cards, and head-to-head comparison.
 - Advanced CPU telemetry with per-logical-thread load, effective performance, and frequency.

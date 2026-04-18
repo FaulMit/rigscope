@@ -225,6 +225,29 @@
         <div class="stress-meter"><i id="stressProgressBar"></i></div>
         <div id="stressLog" class="stress-log"><span>Ready. Stress runs only after explicit start.</span></div>
       </article>
+      <article class="panel">
+        <div class="panel-head compact"><span class="icon">▣</span><div><p class="label">native tools</p><h2>External Stress Runners</h2></div></div>
+        <div class="stress-board native-runner-board">
+          <div class="stress-controls">
+            <label class="stress-select"><span>Profile</span><select id="nativeRunnerSelect"></select></label>
+            <label class="stress-select"><span>Duration</span><select id="nativeRunnerDuration"><option value="60">60 sec smoke</option><option value="180">3 min check</option><option value="300" selected>5 min stability</option><option value="600">10 min extended</option></select></label>
+            <div class="stress-actions">
+              <button id="nativeRunnerStartButton" class="command-button danger">Start Native</button>
+              <button id="nativeRunnerStopButton" class="command-button ghost" disabled>Stop Native</button>
+            </div>
+          </div>
+          <div class="stress-live">
+            <div class="stress-ring"><strong id="nativeRunnerState">idle</strong><span id="nativeRunnerPid">no process</span></div>
+            <div class="stress-bars">
+              <div><span>Tool</span><strong id="nativeRunnerTool">-</strong></div>
+              <div><span>Risk</span><strong id="nativeRunnerRisk">-</strong></div>
+              <div><span>Elapsed</span><strong id="nativeRunnerElapsed">0s</strong></div>
+              <div><span>Available</span><strong id="nativeRunnerAvailable">-</strong></div>
+            </div>
+          </div>
+        </div>
+        <div id="nativeRunnerLog" class="stress-log"><span>Native runners require explicit confirmation and never auto-start.</span></div>
+      </article>
       <div class="two-col">
         <article class="panel"><div class="panel-head compact"><span class="icon">▤</span><div><p class="label">latest run</p><h2>Benchmark Result</h2></div></div><div id="benchResultList" class="kv-list"></div></article>
         <article class="panel score-panel"><div class="panel-head compact"><span class="icon">★</span><div><p class="label">comparison score</p><h2>RigScore</h2></div></div><div class="score-core"><strong id="rigScoreValue">-</strong><span id="rigScoreLabel">Run tests to score this PC</span></div><div id="scoreBreakdown" class="score-breakdown"></div></article>

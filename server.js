@@ -4,6 +4,7 @@ const os = require("os");
 const path = require("path");
 const { execFile, spawn } = require("child_process");
 const { detectNativeBridges } = require("./native-bridges");
+const nativeRunners = require("./native-runners");
 
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -1389,6 +1390,39 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/stress/status") {
     sendJson(res, 200, getStressStatus());
+    return;
+  }
+  if (url.pathname === "/api/native-runners") {
+    try {
+      sendJson(res, 200, {
+        generatedAt: new Date().toISOString(),
+        acknowledgement: nativeRunners.ACK,
+        profiles: nativeRunners.getProfiles(),
+        status: nativeRunners.getStatus()
+      });
+    } catch (error) {
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+  if (url.pathname === "/api/native-runners/start" && req.method === "POST") {
+    try {
+      sendJson(res, 200, nativeRunners.startProfile(await readJsonBody(req)));
+    } catch (error) {
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+  if (url.pathname === "/api/native-runners/stop" && req.method === "POST") {
+    try {
+      sendJson(res, 200, nativeRunners.stopProfile("stopped"));
+    } catch (error) {
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+  if (url.pathname === "/api/native-runners/status") {
+    sendJson(res, 200, nativeRunners.getStatus());
     return;
   }
   if (url.pathname === "/api/stress/cpu/start" && req.method === "POST") {

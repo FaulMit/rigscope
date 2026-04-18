@@ -1,6 +1,9 @@
 const state = {
   snapshot: null,
   toolkit: null,
+  nativeRunners: null,
+  nativeRunnerStatus: null,
+  nativeRunnerTimer: null,
   bench: { cpu: null, memory: null, gpu: null, sensors: null },
   stress: {
     active: false,
@@ -295,10 +298,12 @@ function renderLab(snapshot) {
     verdictCard("Snapshot API", "ok", "/api/snapshot"),
     verdictCard("Toolkit API", state.toolkit ? "ok" : "warn", state.toolkit ? `${state.toolkit.available}/${state.toolkit.total} integrations` : "not loaded"),
     verdictCard("Native bridges", state.toolkit?.available ? "ok" : "warn", state.toolkit ? `${state.toolkit.available}/${state.toolkit.total} detected on ${state.toolkit.platform?.platform || "this OS"}` : "not loaded"),
+    verdictCard("Native runners", (state.nativeRunners?.profiles || []).some((profile) => profile.available) ? "ok" : "warn", state.nativeRunners ? `${(state.nativeRunners.profiles || []).filter((profile) => profile.available).length}/${(state.nativeRunners.profiles || []).length} launch profiles available` : "not loaded"),
     verdictCard("Comparable score", calculateRigScore().score ? "ok" : "warn", calculateRigScore().score ? `${calculateRigScore().score} points` : "run CPU/RAM/GPU tests"),
     verdictCard("Stress test", state.stress.result ? "ok" : "warn", state.stress.result ? `${state.stress.result.duration}, ${state.stress.result.score}/100 stability` : "ready for explicit start")
   ]);
   renderStressPanel();
+  renderNativeRunners();
 }
 
 function sensorLine(sensors) {
@@ -319,6 +324,11 @@ function setStressLog(items) {
   $("stressLog").innerHTML = items.map((item) => `<span>${esc(item)}</span>`).join("");
 }
 
+function setNativeRunnerLog(items) {
+  const el = $("nativeRunnerLog");
+  if (el) el.innerHTML = items.map((item) => `<span>${esc(item)}</span>`).join("");
+}
+
 function setStressControls(active) {
   ["stressCpuToggle", "stressMemoryToggle", "stressGpuToggle", "stressDuration"].forEach((id) => {
     const el = $(id);
@@ -330,6 +340,49 @@ function setStressControls(active) {
     const el = $(id);
     if (el) el.disabled = active;
   });
+}
+
+function selectedNativeProfile() {
+  const id = $("nativeRunnerSelect")?.value;
+  return (state.nativeRunners?.profiles || []).find((profile) => profile.id === id);
+}
+
+function renderNativeRunners() {
+  const profiles = state.nativeRunners?.profiles || [];
+  const status = state.nativeRunnerStatus || state.nativeRunners?.status || {};
+  const select = $("nativeRunnerSelect");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = profiles.map((profile) => `
+    <option value="${esc(profile.id)}" ${profile.available ? "" : "disabled"}>
+      ${esc(profile.label)} ${profile.available ? "" : "(missing)"}
+    </option>
+  `).join("");
+  if (profiles.some((profile) => profile.id === current)) select.value = current;
+  const selected = selectedNativeProfile() || profiles.find((profile) => profile.available) || profiles[0];
+  if (selected && select.value !== selected.id) select.value = selected.id;
+
+  $("nativeRunnerState").textContent = status.active ? "running" : status.exitCode !== null && status.exitCode !== undefined ? "finished" : "idle";
+  $("nativeRunnerPid").textContent = status.pid ? `PID ${status.pid}` : "no process";
+  $("nativeRunnerTool").textContent = selected?.label || "-";
+  $("nativeRunnerRisk").textContent = selected?.risk || "-";
+  $("nativeRunnerElapsed").textContent = status.elapsedMs ? formatSeconds(status.elapsedMs) : "0s";
+  $("nativeRunnerAvailable").textContent = selected ? selected.available ? "yes" : "missing" : "-";
+  $("nativeRunnerStartButton").disabled = Boolean(status.active) || !selected?.available;
+  $("nativeRunnerStopButton").disabled = !status.active;
+  if (!status.active && selected) {
+    setNativeRunnerLog([
+      selected.notes,
+      selected.executable || "Executable not detected",
+      `Required confirmation: ${state.nativeRunners?.acknowledgement || "START_NATIVE_STRESS"}`
+    ]);
+  } else if (status.active) {
+    setNativeRunnerLog([
+      `${status.label} is running`,
+      `elapsed ${formatSeconds(status.elapsedMs || 0)} / ${formatSeconds(status.durationMs || 0)}`,
+      ...(status.output || []).slice(-4)
+    ]);
+  }
 }
 
 function renderStressPanel() {
@@ -1115,6 +1168,76 @@ async function loadToolkit() {
   }
 }
 
+async function loadNativeRunners() {
+  try {
+    const response = await fetch("/api/native-runners", { cache: "no-store" });
+    if (!response.ok) throw new Error(await response.text());
+    const payload = await response.json();
+    state.nativeRunners = payload;
+    state.nativeRunnerStatus = payload.status;
+    renderNativeRunners();
+    if (state.snapshot) renderLab(state.snapshot);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function pollNativeRunner() {
+  try {
+    const response = await fetch("/api/native-runners/status", { cache: "no-store" });
+    if (!response.ok) return;
+    state.nativeRunnerStatus = await response.json();
+    renderNativeRunners();
+    if (!state.nativeRunnerStatus.active && state.nativeRunnerTimer) {
+      clearInterval(state.nativeRunnerTimer);
+      state.nativeRunnerTimer = null;
+      loadNativeRunners();
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function startNativeRunner() {
+  const profile = selectedNativeProfile();
+  if (!profile?.available) {
+    setNativeRunnerLog(["Selected native tool is not installed or not detected."]);
+    return;
+  }
+  const acknowledgement = state.nativeRunners?.acknowledgement || "START_NATIVE_STRESS";
+  setNativeRunnerLog([`starting ${profile.label}`, "external stress tools can create high heat and power draw"]);
+  try {
+    const response = await fetch("/api/native-runners/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profileId: profile.id,
+        durationSec: Number($("nativeRunnerDuration")?.value || profile.durationDefaultSec || 300),
+        acknowledgement
+      })
+    });
+    if (!response.ok) throw new Error(await response.text());
+    state.nativeRunnerStatus = await response.json();
+    renderNativeRunners();
+    if (!state.nativeRunnerTimer) state.nativeRunnerTimer = setInterval(pollNativeRunner, 1500);
+  } catch (error) {
+    setNativeRunnerLog(["native runner failed", error.message]);
+    console.error(error);
+  }
+}
+
+async function stopNativeRunner() {
+  try {
+    const response = await fetch("/api/native-runners/stop", { method: "POST", cache: "no-store" });
+    if (!response.ok) throw new Error(await response.text());
+    state.nativeRunnerStatus = await response.json();
+    renderNativeRunners();
+  } catch (error) {
+    setNativeRunnerLog(["stop failed", error.message]);
+    console.error(error);
+  }
+}
+
 async function runCpuBench() {
   await runServerBench("cpu", "/api/bench/cpu", "cpuBenchButton", "cpuBenchResult", "CPU benchmark running");
 }
@@ -1210,6 +1333,9 @@ $("saveSetupButton").addEventListener("click", saveLocalProfile);
 $("exportSetupButton").addEventListener("click", exportLocalProfile);
 $("stressStartButton").addEventListener("click", startStressTest);
 $("stressStopButton").addEventListener("click", () => stopStressTest("stopped"));
+$("nativeRunnerStartButton").addEventListener("click", startNativeRunner);
+$("nativeRunnerStopButton").addEventListener("click", stopNativeRunner);
+$("nativeRunnerSelect").addEventListener("change", renderNativeRunners);
 ["stressCpuToggle", "stressMemoryToggle", "stressGpuToggle", "stressDuration"].forEach((id) => {
   $(id).addEventListener("change", renderStressPanel);
 });
@@ -1220,5 +1346,6 @@ try {
 } catch {}
 refresh();
 loadToolkit();
+loadNativeRunners();
 setView(location.hash.slice(1) || "overview");
 setInterval(refresh, 7000);
