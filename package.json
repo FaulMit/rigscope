@@ -1,0 +1,73 @@
+{
+  "name": "rigscope",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Cross-platform local hardware inventory, diagnostics, benchmark, and stress-test dashboard.",
+  "main": "electron/main.js",
+  "author": "RigScope",
+  "scripts": {
+    "start": "node server.js",
+    "open": "node server.js --open",
+    "app": "node server.js --app",
+    "desktop": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win portable nsis",
+    "dist:linux": "electron-builder --linux AppImage deb tar.gz",
+    "dist:mac": "electron-builder --mac dmg zip"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "electron": "^32.3.3",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "dev.rigscope.app",
+    "productName": "RigScope",
+    "asar": true,
+    "files": [
+      "electron/**/*",
+      "public/**/*",
+      "build/**/*",
+      "native-bridges.js",
+      "server.js",
+      "package.json",
+      "README.md"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "portable",
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": [
+        "AppImage",
+        "deb",
+        "tar.gz"
+      ],
+      "category": "System"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities"
+    }
+  }
+}

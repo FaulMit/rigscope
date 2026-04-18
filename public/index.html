@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RigScope</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">local hardware intelligence</p>
+        <h1>RigScope</h1>
+      </div>
+      <div class="actions">
+        <button id="refreshButton" class="icon-button" title="Refresh now">↻</button>
+        <a class="icon-button" href="/api/export" title="Export JSON report">⇩</a>
+        <div class="status-strip">
+          <span class="pulse" id="livePulse"></span>
+          <span id="updatedAt">connecting</span>
+        </div>
+      </div>
+    </header>
+
+    <nav class="tabs" aria-label="RigScope sections">
+      <button class="tab active" data-view="overview">Overview</button>
+      <button class="tab" data-view="suite">Suite</button>
+      <button class="tab" data-view="cpu">CPU</button>
+      <button class="tab" data-view="board">Board</button>
+      <button class="tab" data-view="memory">Memory</button>
+      <button class="tab" data-view="gpu">GPU</button>
+      <button class="tab" data-view="storage">Storage</button>
+      <button class="tab" data-view="network">Network</button>
+      <button class="tab" data-view="devices">Devices</button>
+      <button class="tab" data-view="lab">Lab</button>
+      <button class="tab" data-view="community">Community</button>
+      <button class="tab" data-view="windows">Platform</button>
+    </nav>
+
+    <section class="hero-grid">
+      <article class="panel system-panel">
+        <div class="panel-head">
+          <span class="icon">▧</span>
+          <div>
+            <p class="label">system</p>
+            <h2 id="machineName">System scan</h2>
+          </div>
+        </div>
+        <div class="spec-grid">
+          <div><span>OS</span><strong id="osValue">-</strong></div>
+          <div><span>CPU</span><strong id="cpuValue">-</strong></div>
+          <div><span>GPU</span><strong id="gpuName">-</strong></div>
+          <div><span>Uptime</span><strong id="uptimeValue">-</strong></div>
+        </div>
+      </article>
+
+      <article class="panel gauge-panel">
+        <canvas id="radarCanvas" width="420" height="260" aria-label="System radar"></canvas>
+        <div class="radar-caption">
+          <span>live pressure map</span>
+          <strong id="healthText">warming up</strong>
+        </div>
+      </article>
+    </section>
+
+    <section class="metric-grid">
+      <article class="panel metric">
+        <div class="metric-top"><span>CPU</span><strong id="cpuUtil">-</strong></div>
+        <div class="bar"><i id="cpuUtilBar"></i></div>
+        <p id="cpuDetails">-</p>
+      </article>
+      <article class="panel metric">
+        <div class="metric-top"><span>GPU</span><strong id="gpuUtil">-</strong></div>
+        <div class="bar"><i id="gpuUtilBar"></i></div>
+        <p id="gpuDetails">-</p>
+      </article>
+      <article class="panel metric">
+        <div class="metric-top"><span>RAM</span><strong id="ramValue">-</strong></div>
+        <div class="bar"><i id="ramBar"></i></div>
+        <p id="ramDetails">-</p>
+      </article>
+      <article class="panel metric">
+        <div class="metric-top"><span>Network</span><strong id="netValue">-</strong></div>
+        <div class="net-pills">
+          <span id="cfPill">1.1.1.1</span>
+          <span id="chatPill">chatgpt</span>
+        </div>
+        <p id="netDetails">single-probe latency</p>
+      </article>
+    </section>
+
+    <section class="view active" data-view-panel="overview">
+      <article class="panel">
+        <div class="panel-head compact"><span class="icon">◎</span><div><p class="label">complete summary</p><h2>Computer Passport</h2></div></div>
+        <div id="summaryGrid" class="summary-grid"></div>
+      </article>
+      <div class="two-col">
+        <article class="panel"><div class="panel-head compact"><span class="icon">▤</span><div><p class="label">volumes</p><h2>Logical Drives</h2></div></div><div id="diskList" class="disk-list"></div></article>
+        <article class="panel"><div class="panel-head compact"><span class="icon">!</span><div><p class="label">reliability</p><h2>Recent System Signals</h2></div></div><div id="eventList" class="event-list"></div></article>
+      </div>
+    </section>
+
+    <section class="view" data-view-panel="suite">
+      <article class="panel">
+        <div class="panel-head compact"><span class="icon">✦</span><div><p class="label">unified suite</p><h2>RigScope Control Center</h2></div></div>
+        <div id="suiteGrid" class="suite-grid"></div>
+      </article>
+      <div class="two-col">
+        <article class="panel"><div class="panel-head compact"><span class="icon">✓</span><div><p class="label">system verdict</p><h2>Diagnostics</h2></div></div><div id="diagnosticList" class="diagnostic-list"></div></article>
+        <article class="panel"><div class="panel-head compact"><span class="icon">⇄</span><div><p class="label">tool bridge</p><h2>Integrations</h2></div></div><div id="toolkitList" class="compact-grid"></div></article>
+      </div>
+    </section>
+
+    <section class="view" data-view-panel="cpu">
+      <div class="two-col wide-left">
+        <article class="panel"><div class="panel-head compact"><span class="icon">◈</span><div><p class="label">processor</p><h2>CPU Details</h2></div></div><div id="cpuList" class="kv-list"></div></article>
+        <article class="panel"><div class="panel-head compact"><span class="icon">▦</span><div><p class="label">runtime</p><h2>Top CPU Processes</h2></div></div><div id="cpuProcessList" class="table-list"></div></article>
+      </div>
+      <article class="panel inventory-panel">
+        <div class="panel-head compact">
+          <span class="icon">▥</span>
+          <div><p class="label">advanced telemetry</p><h2>Logical CPU Threads</h2></div>
+        </div>
+        <div id="cpuThreadGrid" class="thread-grid"></div>
+      </article>
+    </section>
+
+    <section class="view" data-view-panel="board">
+      <div class="two-col">
+        <article class="panel"><div class="panel-head compact"><span class="icon">▣</span><div><p class="label">motherboard</p><h2>Board</h2></div></div><div id="boardList" class="kv-list"></div></article>
+        <article class="panel"><div class="panel-head compact"><span class="icon">◇</span><div><p class="label">firmware</p><h2>BIOS / UEFI</h2></div></div><div id="biosList" class="kv-list"></div></article>
+      </div>
+    </section>
+
+    <section class="view" data-view-panel="memory">
+      <article class="panel"><div class="panel-head compact"><span class="icon">▥</span><div><p class="label">memory slots</p><h2>DIMM Modules</h2></div></div><div id="memoryModules" class="module-grid"></div></article>
+    </section>
+
+    <section class="view" data-view-panel="gpu">
+      <div class="two-col">
+        <article class="panel"><div class="panel-head compact"><span class="icon">◬</span><div><p class="label">graphics</p><h2>Adapters</h2></div></div><div id="gpuList" class="module-grid"></div></article>
+        <article class="panel"><div class="panel-head compact"><span class="icon">◇</span><div><p class="label">driver stack</p><h2>Display State</h2></div></div><div id="displayList" class="kv-list"></div></article>
+      </div>
+    </section>
+
+    <section class="view" data-view-panel="storage">
+      <div class="two-col wide-left">
+        <article class="panel"><div class="panel-head compact"><span class="icon">◫</span><div><p class="label">hardware</p><h2>Physical Drives</h2></div></div><div id="physicalDiskList" class="module-grid"></div></article>
+        <article class="panel"><div class="panel-head compact"><span class="icon">▤</span><div><p class="label">filesystems</p><h2>Volumes</h2></div></div><div id="volumeList" class="table-list"></div></article>
+      </div>
+    </section>
+
+    <section class="view" data-view-panel="network">
+      <article class="panel"><div class="panel-head compact"><span class="icon">◎</span><div><p class="label">interfaces</p><h2>Network Adapters</h2></div></div><div id="networkList" class="module-grid"></div></article>
+    </section>
+
+    <section class="view" data-view-panel="devices">
+      <div class="two-col">
+        <article class="panel"><div class="panel-head compact"><span class="icon">▨</span><div><p class="label">display chain</p><h2>Monitors</h2></div></div><div id="monitorList" class="module-grid"></div></article>
+        <article class="panel"><div class="panel-head compact"><span class="icon">◍</span><div><p class="label">sound stack</p><h2>Audio Devices</h2></div></div><div id="soundList" class="module-grid"></div></article>
+      </div>
+      <div class="two-col">
+        <article class="panel"><div class="panel-head compact"><span class="icon">⌁</span><div><p class="label">external bus</p><h2>USB Controllers & Hubs</h2></div></div><div id="usbList" class="compact-grid"></div></article>
+        <article class="panel"><div class="panel-head compact"><span class="icon">⌘</span><div><p class="label">human interface</p><h2>Input Devices</h2></div></div><div id="inputList" class="compact-grid"></div></article>
+      </div>
+      <article class="panel inventory-panel"><div class="panel-head compact"><span class="icon">▦</span><div><p class="label">plug and play inventory</p><h2>Detected PNP Devices</h2></div></div><div id="pnpList" class="compact-grid dense"></div></article>
+    </section>
+
+    <section class="view" data-view-panel="lab">
+      <article class="panel">
+        <div class="panel-head compact"><span class="icon">⚡</span><div><p class="label">benchmark lab</p><h2>Quick Tests</h2></div></div>
+        <div class="lab-grid">
+          <div class="lab-card">
+            <div class="lab-title"><strong>CPU Quick Bench</strong><span>safe</span></div>
+            <div class="lab-meter"><i id="cpuBenchBar"></i></div>
+            <p id="cpuBenchResult">Ready</p>
+            <button id="cpuBenchButton" class="command-button">Run CPU Bench</button>
+          </div>
+          <div class="lab-card">
+            <div class="lab-title"><strong>Memory Throughput</strong><span>safe</span></div>
+            <div class="lab-meter"><i id="memoryBenchBar"></i></div>
+            <p id="memoryLabState">Ready</p>
+            <button id="memoryBenchButton" class="command-button">Run RAM Bench</button>
+          </div>
+          <div class="lab-card">
+            <div class="lab-title"><strong>GPU Render</strong><span>safe</span></div>
+            <canvas id="gpuBenchCanvas" width="240" height="96" aria-label="GPU quick render"></canvas>
+            <p id="gpuLabState">Ready</p>
+            <button id="gpuBenchButton" class="command-button">Run GPU Bench</button>
+          </div>
+          <div class="lab-card">
+            <div class="lab-title"><strong>Sensor Sweep</strong><span>safe</span></div>
+            <div class="lab-meter"><i id="sensorBenchBar"></i></div>
+            <p id="sensorLabState">Sensor bridge</p>
+            <button id="sensorBenchButton" class="command-button">Run Sensors</button>
+          </div>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="panel-head compact"><span class="icon">🔥</span><div><p class="label">stability lab</p><h2>Stress Test</h2></div></div>
+        <div class="stress-board">
+          <div class="stress-controls">
+            <label class="toggle-card"><input id="stressCpuToggle" type="checkbox" checked><span>CPU Workers</span><strong id="stressCpuState">armed</strong></label>
+            <label class="toggle-card"><input id="stressMemoryToggle" type="checkbox" checked><span>RAM Allocator</span><strong id="stressMemoryState">armed</strong></label>
+            <label class="toggle-card"><input id="stressGpuToggle" type="checkbox" checked><span>GPU Render Loop</span><strong id="stressGpuState">armed</strong></label>
+            <label class="stress-select"><span>Duration</span><select id="stressDuration"><option value="30">30 sec smoke</option><option value="60" selected>60 sec balanced</option><option value="180">3 min stability</option><option value="300">5 min extended</option></select></label>
+            <div class="stress-actions">
+              <button id="stressStartButton" class="command-button danger">Start Stress</button>
+              <button id="stressStopButton" class="command-button ghost" disabled>Stop</button>
+            </div>
+          </div>
+          <div class="stress-live">
+            <div class="stress-ring"><strong id="stressProgressValue">0%</strong><span id="stressModeLabel">idle</span></div>
+          <div class="stress-bars">
+              <div><span>Elapsed</span><strong id="stressElapsed">0s</strong></div>
+              <div><span>CPU ops</span><strong id="stressCpuOps">-</strong></div>
+              <div><span>Memory held</span><strong id="stressMemoryHeld">0 MB</strong></div>
+              <div><span>GPU frames</span><strong id="stressGpuFrames">-</strong></div>
+            </div>
+          </div>
+        </div>
+        <canvas id="gpuStressCanvas" width="960" height="360" aria-label="GPU stress renderer"></canvas>
+        <div class="stress-meter"><i id="stressProgressBar"></i></div>
+        <div id="stressLog" class="stress-log"><span>Ready. Stress runs only after explicit start.</span></div>
+      </article>
+      <div class="two-col">
+        <article class="panel"><div class="panel-head compact"><span class="icon">▤</span><div><p class="label">latest run</p><h2>Benchmark Result</h2></div></div><div id="benchResultList" class="kv-list"></div></article>
+        <article class="panel score-panel"><div class="panel-head compact"><span class="icon">★</span><div><p class="label">comparison score</p><h2>RigScore</h2></div></div><div class="score-core"><strong id="rigScoreValue">-</strong><span id="rigScoreLabel">Run tests to score this PC</span></div><div id="scoreBreakdown" class="score-breakdown"></div></article>
+      </div>
+      <article class="panel inventory-panel"><div class="panel-head compact"><span class="icon">⇩</span><div><p class="label">portable report</p><h2>Report & Comparison</h2></div></div><div id="reportList" class="diagnostic-list"></div></article>
+    </section>
+
+    <section class="view" data-view-panel="community">
+      <article class="panel">
+        <div class="panel-head compact"><span class="icon">◎</span><div><p class="label">setup network prototype</p><h2>Community Setups</h2></div></div>
+        <div class="community-hero">
+          <div>
+            <strong id="localSetupName">Your setup</strong>
+            <span id="localSetupMeta">Run Lab tests to publish a stronger profile</span>
+          </div>
+          <div class="community-actions">
+            <button id="saveSetupButton" class="command-button">Save Local Profile</button>
+            <button id="exportSetupButton" class="command-button">Export Profile</button>
+          </div>
+        </div>
+        <div id="setupCards" class="setup-grid"></div>
+      </article>
+      <div class="two-col">
+        <article class="panel"><div class="panel-head compact"><span class="icon">★</span><div><p class="label">leaderboard</p><h2>RigScore Ranking</h2></div></div><div id="leaderboardList" class="table-list"></div></article>
+        <article class="panel"><div class="panel-head compact"><span class="icon">⇄</span><div><p class="label">head to head</p><h2>Setup Compare</h2></div></div><div id="compareList" class="kv-list"></div></article>
+      </div>
+    </section>
+
+    <section class="view" data-view-panel="windows">
+      <div class="two-col">
+        <article class="panel"><div class="panel-head compact"><span class="icon">⊞</span><div><p class="label">operating system</p><h2>Platform</h2></div></div><div id="windowsList" class="kv-list"></div></article>
+        <article class="panel"><div class="panel-head compact"><span class="icon">▦</span><div><p class="label">runtime</p><h2>Top Memory Processes</h2></div></div><div id="processList" class="table-list"></div></article>
+      </div>
+      <div class="two-col">
+        <article class="panel"><div class="panel-head compact"><span class="icon">◇</span><div><p class="label">kernel stack</p><h2>Running System Drivers</h2></div></div><div id="driverList" class="compact-grid dense"></div></article>
+        <article class="panel"><div class="panel-head compact"><span class="icon">▣</span><div><p class="label">servicing</p><h2>Recent Hotfixes</h2></div></div><div id="hotfixList" class="table-list"></div></article>
+      </div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
