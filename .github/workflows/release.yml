@@ -140,6 +140,15 @@ jobs:
           BUILD_SCRIPT: ${{ matrix.script }}
           ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
 
+      - name: Normalize Windows update metadata
+        if: runner.os == 'Windows' && matrix.artifact != 'windows-x64'
+        shell: pwsh
+        run: |
+          $latest = Join-Path $PWD "release/latest.yml"
+          if (Test-Path $latest) {
+            Move-Item -LiteralPath $latest -Destination (Join-Path $PWD "release/latest-${{ matrix.artifact }}.yml") -Force
+          }
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
