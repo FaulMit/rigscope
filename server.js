@@ -1028,13 +1028,23 @@ function runNodeBenchmark(script, timeout) {
     execFile(process.execPath, ["-e", script], {
       windowsHide: true,
       timeout,
-      maxBuffer: 1024 * 256
+      maxBuffer: 1024 * 256,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }
     }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(`${error.message}\n${stderr || ""}`));
         return;
       }
-      resolve(JSON.parse(stdout.trim()));
+      const output = stdout.trim();
+      if (!output) {
+        reject(new Error(`Benchmark worker produced no JSON output.${stderr ? `\n${stderr}` : ""}`));
+        return;
+      }
+      try {
+        resolve(JSON.parse(output));
+      } catch (parseError) {
+        reject(new Error(`Benchmark worker returned invalid JSON: ${parseError.message}\n${output.slice(0, 500)}`));
+      }
     });
   });
 }
@@ -1109,7 +1119,8 @@ function startCpuStress({ durationSec = 60, workers } = {}) {
   cpuStress.workers = Array.from({ length: workerCount }, () => {
     const child = spawn(process.execPath, ["-e", cpuStressChildScript], {
       windowsHide: true,
-      stdio: ["ignore", "pipe", "ignore", "ipc"]
+      stdio: ["ignore", "pipe", "ignore", "ipc"],
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }
     });
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
@@ -1184,7 +1195,7 @@ function startMemoryStress({ durationSec = 60, targetMb } = {}) {
   const child = spawn(process.execPath, ["-e", memoryStressChildScript], {
     windowsHide: true,
     stdio: ["ignore", "pipe", "ignore", "ipc"],
-    env: { ...process.env, RIGSCOPE_MEMORY_MB: String(capped) }
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", RIGSCOPE_MEMORY_MB: String(capped) }
   });
   memoryStress.child = child;
   child.stdout.setEncoding("utf8");

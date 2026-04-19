@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.4 - 2026-04-19
+
+### Fixed
+
+- Fixed packaged desktop benchmark/stress workers launching as a second RigScope app instead of Node by setting `ELECTRON_RUN_AS_NODE=1`.
+- Benchmark worker JSON parsing now reports a controlled API error instead of crashing the Electron main process on empty or invalid output.
+
 ## 1.0.3 - 2026-04-19
 
 ### Fixed
