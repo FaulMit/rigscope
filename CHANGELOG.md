@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.3 - 2026-04-19
+
+### Fixed
+
+- Fixed a packaged desktop crash when stopping memory stress after the worker IPC channel had already closed.
+- Memory stress shutdown now uses the same safe child-process cleanup path as CPU stress.
+
 ## 1.0.2 - 2026-04-18
 
 ### Fixed

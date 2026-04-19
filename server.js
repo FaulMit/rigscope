@@ -1157,15 +1157,14 @@ function stopMemoryStress(reason = "stopped") {
   }
   memoryStress.active = false;
   clearTimeout(memoryStress.timer);
-  if (memoryStress.child) {
-    try { memoryStress.child.send("stop"); } catch {}
+  const child = memoryStress.child;
+  memoryStress.child = null;
+  if (child) {
+    safeSendChildMessage(child, "stop");
     setTimeout(() => {
-      if (memoryStress.child && !memoryStress.child.killed) {
-        try { memoryStress.child.kill(); } catch {}
-      }
+      safeKillChild(child);
     }, 500).unref();
   }
-  memoryStress.child = null;
   return memoryStressStatus(reason);
 }
 
@@ -1201,6 +1200,11 @@ function startMemoryStress({ durationSec = 60, targetMb } = {}) {
   });
   child.on("exit", () => {
     if (memoryStress.active) memoryStress.active = false;
+    if (memoryStress.child === child) memoryStress.child = null;
+  });
+  child.on("error", () => {
+    if (memoryStress.active) memoryStress.active = false;
+    if (memoryStress.child === child) memoryStress.child = null;
   });
   memoryStress.timer = setTimeout(() => stopMemoryStress("completed"), memoryStress.durationMs);
   memoryStress.timer.unref();

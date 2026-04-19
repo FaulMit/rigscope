@@ -1,6 +1,6 @@
 {
   "name": "rigscope",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Cross-platform local hardware inventory, diagnostics, benchmark, and stress-test dashboard.",
   "main": "electron/main.js",
