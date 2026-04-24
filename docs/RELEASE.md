@@ -20,6 +20,13 @@ Install dependencies:
 npm ci
 ```
 
+Run the local checks:
+
+```powershell
+npm test
+npm run verify
+```
+
 Build for the current platform:
 
 ```powershell
@@ -53,8 +60,8 @@ Manual build:
 Tagged release:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 The tag build uploads artifacts and publishes them as GitHub Release assets.

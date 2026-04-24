@@ -20,18 +20,28 @@ const state = {
     memoryCycles: 0,
     cpuOps: 0,
     gpuFrames: 0,
+    gpuWorkUnits: 0,
+    gpuEngine: null,
+    gpuPasses: 0,
     lastSensors: null,
     result: null
   },
   selectedSetup: "local",
   savedProfile: null,
   community: { profiles: [], status: "offline", mode: "local", publishing: "local-only" },
-  updates: { supported: false, status: "unknown", currentVersion: "-", availableVersion: null }
+  updates: { supported: false, status: "unknown", currentVersion: "-", availableVersion: null },
+  settings: { theme: "dark", livePollMs: 1000 },
+  polling: { full: false, live: false, fullTimer: null, liveTimer: null }
 };
+
+const SETTINGS_KEY = "rigscope.settings";
+const BENCH_KEY = "rigscope.bench";
+const POLL_INTERVALS = [500, 750, 1000, 1500, 2000, 5000];
 
 const demoSetups = [
   {
     id: "creator-4090",
+    source: "sample",
     name: "Creator Beast",
     owner: "renderlab",
     score: 9280,
@@ -43,6 +53,7 @@ const demoSetups = [
   },
   {
     id: "compact-4070",
+    source: "sample",
     name: "Small Form Factor",
     owner: "miniworks",
     score: 7420,
@@ -54,6 +65,7 @@ const demoSetups = [
   },
   {
     id: "budget-6600",
+    source: "sample",
     name: "Budget Punch",
     owner: "valuehunter",
     score: 4380,
@@ -101,19 +113,178 @@ const esc = (value) => prettyValue(value).replace(/[&<>"']/g, (ch) => ({
 }[ch]));
 const safeEsc = (value, fallback = "-") => esc(prettyValue(value, fallback));
 
+const ICONS = {
+  activity: '<path d="M22 12h-4l-3 8-6-16-3 8H2"/>',
+  alert: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  board: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4v4"/><path d="M15 4v4"/><path d="M9 16v4"/><path d="M15 16v4"/><path d="M4 9h4"/><path d="M16 9h4"/><path d="M4 15h4"/><path d="M16 15h4"/>',
+  box: '<path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+  chip: '<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 1v4"/><path d="M15 1v4"/><path d="M9 19v4"/><path d="M15 19v4"/><path d="M1 9h4"/><path d="M1 15h4"/><path d="M19 9h4"/><path d="M19 15h4"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
+  download: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
+  flame: '<path d="M8.5 14.5A4 4 0 0 0 12 21a5 5 0 0 0 5-5c0-3-2-5-3.5-7.5-.3 2-1.5 3.2-3 4-1-2-1-4 1-7-4 2.2-6 5.2-6 8.5 0 .9.2 1.7.6 2.5"/>',
+  gauge: '<path d="M4 14a8 8 0 1 1 16 0"/><path d="M4 14v4h16v-4"/><path d="m12 14 4-4"/>',
+  gpu: '<rect x="3" y="7" width="14" height="10" rx="2"/><path d="M7 7V4"/><path d="M13 7V4"/><path d="M7 20v-3"/><path d="M13 20v-3"/><path d="M17 11h4v2h-4"/><circle cx="10" cy="12" r="2"/>',
+  hardDrive: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15h.01"/><path d="M11 15h6"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 10v6"/><path d="M12 7h.01"/>',
+  keyboard: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h.01"/><path d="M11 9h.01"/><path d="M15 9h.01"/><path d="M7 13h10"/><path d="M8 17h8"/>',
+  list: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
+  menu: '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
+  monitor: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>',
+  network: '<rect x="9" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><path d="M12 9v3"/><path d="M6 15v-3h12v3"/>',
+  package: '<path d="m7.5 4.3 9 5.2"/><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+  refresh: '<path d="M20 11a8 8 0 0 0-14.8-4"/><path d="M5 3v4h4"/><path d="M4 13a8 8 0 0 0 14.8 4"/><path d="M19 21v-4h-4"/>',
+  settings: '<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V22a2 2 0 0 1-4 0v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 1 1 4.2 18l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H2a2 2 0 0 1 0-4h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 1 1 6.2 4.2l.1.1a1.7 1.7 0 0 0 1.9.3H8.5a1.7 1.7 0 0 0 1-1.6V2a2 2 0 0 1 4 0v.2a1.7 1.7 0 0 0 1 1.6h.3a1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 1 1 19.6 6l-.1.1a1.7 1.7 0 0 0-.3 1.9v.3a1.7 1.7 0 0 0 1.6 1H22a2 2 0 0 1 0 4h-.2a1.7 1.7 0 0 0-1.6 1Z"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/>',
+  spark: '<path d="M13 2 3 14h8l-1 8 11-13h-8l1-7Z"/>',
+  star: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
+  upload: '<path d="M12 21V9"/><path d="m7 14 5-5 5 5"/><path d="M5 3h14"/>',
+  usb: '<path d="M12 3v10"/><path d="M8 7h8"/><path d="M16 7l2 2-2 2"/><path d="M8 7l-2 2 2 2"/><path d="M12 13a4 4 0 1 0 4 4"/><circle cx="12" cy="17" r="1"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/>',
+  volume: '<path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>',
+  wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.5 5.5L3 18v3h3l6.2-6.2a4 4 0 0 0 5.5-5.5l-2.4 2.4-3-3 2.4-2.4Z"/>',
+  zap: '<path d="M13 2 4 14h7l-1 8 10-13h-7l1-7Z"/>'
+};
+
+const sectionIcons = {
+  overview: "gauge",
+  suite: "activity",
+  cpu: "chip",
+  board: "board",
+  memory: "database",
+  gpu: "gpu",
+  storage: "hardDrive",
+  network: "network",
+  devices: "monitor",
+  lab: "zap",
+  community: "users",
+  windows: "monitor",
+  settings: "settings"
+};
+
+function iconSvg(name) {
+  const body = ICONS[name] || ICONS.info;
+  return `<svg class="svg-icon" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+}
+
+function setIconOnly(el, name) {
+  if (el) el.innerHTML = iconSvg(name);
+}
+
+function prependIcon(el, name) {
+  if (!el || el.querySelector(".svg-icon")) return;
+  el.insertAdjacentHTML("afterbegin", iconSvg(name));
+}
+
+function setCommandButtonLabel(buttonOrId, text, icon = "spark") {
+  const button = typeof buttonOrId === "string" ? $(buttonOrId) : buttonOrId;
+  if (!button) return;
+  button.innerHTML = `${iconSvg(icon)}<span>${esc(text)}</span>`;
+}
+
+function panelIconName(panelHead) {
+  const label = panelHead?.querySelector(".label")?.textContent?.toLowerCase() || "";
+  const title = panelHead?.querySelector("h2")?.textContent?.toLowerCase() || "";
+  const text = `${label} ${title}`;
+  if (text.includes("cpu") || text.includes("processor") || text.includes("thread")) return "chip";
+  if (text.includes("gpu") || text.includes("graphics") || text.includes("display")) return "gpu";
+  if (text.includes("memory") || text.includes("dimm")) return "database";
+  if (text.includes("network") || text.includes("interface")) return "network";
+  if (text.includes("drive") || text.includes("volume") || text.includes("filesystem") || text.includes("storage")) return "hardDrive";
+  if (text.includes("board") || text.includes("bios") || text.includes("firmware")) return "board";
+  if (text.includes("stress")) return "flame";
+  if (text.includes("benchmark") || text.includes("lab")) return "zap";
+  if (text.includes("settings") || text.includes("application")) return "settings";
+  if (text.includes("community") || text.includes("leaderboard") || text.includes("compare")) return "users";
+  if (text.includes("diagnostic") || text.includes("verdict")) return "shield";
+  if (text.includes("integration") || text.includes("tool")) return "wrench";
+  if (text.includes("signal") || text.includes("reliability")) return "alert";
+  if (text.includes("audio") || text.includes("sound")) return "volume";
+  if (text.includes("usb") || text.includes("external bus")) return "usb";
+  if (text.includes("input")) return "keyboard";
+  if (text.includes("report") || text.includes("export")) return "download";
+  if (text.includes("score")) return "star";
+  if (text.includes("system") || text.includes("platform") || text.includes("summary")) return "monitor";
+  return "info";
+}
+
+function hydrateUiIcons() {
+  setIconOnly($("refreshButton"), "refresh");
+  setIconOnly($("updateButton"), "upload");
+  setIconOnly(document.querySelector('a[href="/api/export"]'), "download");
+  setIconOnly(document.querySelector(".menu-glyph"), "menu");
+  document.querySelectorAll(".tab").forEach((tab) => prependIcon(tab, sectionIcons[tab.dataset.view] || "info"));
+  document.querySelectorAll(".panel-head .icon").forEach((icon) => setIconOnly(icon, panelIconName(icon.closest(".panel-head"))));
+  [
+    ["cpuUtil", "chip"],
+    ["gpuUtil", "gpu"],
+    ["ramValue", "database"],
+    ["netValue", "network"]
+  ].forEach(([id, icon]) => prependIcon($(id)?.closest(".metric-top")?.querySelector("span"), icon));
+  [
+    ["cpuBenchButton", "Run CPU Load", "chip"],
+    ["memoryBenchButton", "Run RAM Load", "database"],
+    ["gpuBenchButton", "Run GPU Render", "gpu"],
+    ["sensorBenchButton", "Check Sensors", "activity"],
+    ["stressStartButton", "Start Stress", "flame"],
+    ["stressStopButton", "Stop", "shield"],
+    ["nativeRunnerStartButton", "Start External Tool", "wrench"],
+    ["nativeRunnerStopButton", "Stop External Tool", "shield"],
+    ["saveSetupButton", "Save / Sync Profile", "upload"],
+    ["exportSetupButton", "Export Profile", "download"]
+  ].forEach(([id, text, icon]) => setCommandButtonLabel(id, text, icon));
+}
+
+document.body.classList.add("is-loading");
+
 async function parseApiError(response) {
   const text = await response.text();
   try {
     const payload = JSON.parse(text);
-    return prettyValue(payload.error || payload.message || text, "не удалось");
+    return prettyValue(payload.error || payload.message || text, "Request failed");
   } catch {
-    return prettyValue(text, "не удалось");
+    return prettyValue(text, "Request failed");
   }
 }
 
 function setBar(id, value) {
   const el = $(id);
   if (el) el.style.width = pct(value);
+}
+
+function resizeCanvasToDisplaySize(canvas, minWidth = 1, minHeight = 1) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.max(minWidth, Math.round(rect.width * dpr));
+  const height = Math.max(minHeight, Math.round(rect.height * dpr));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  return { width, height, dpr };
+}
+
+function resetCanvasElement(id) {
+  const canvas = $(id);
+  if (!canvas?.parentNode) return canvas;
+  const clone = canvas.cloneNode(false);
+  canvas.parentNode.replaceChild(clone, canvas);
+  return clone;
+}
+
+function resizeCanvasForGpuStress(canvas, intensity = 2) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const displayWidth = Math.max(1, Math.round(rect.width * dpr));
+  const targetWidth = intensity >= 3 ? 1920 : intensity >= 2 ? 1440 : 960;
+  const viewportCap = Math.max(640, Math.round(window.innerWidth * dpr * 1.08));
+  const width = Math.max(displayWidth, Math.min(targetWidth, viewportCap));
+  const height = Math.max(Math.round(width * 0.375), Math.round(rect.height * dpr), 240);
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  return { width, height, dpr };
 }
 
 function kv(containerId, rows) {
@@ -127,6 +298,170 @@ function kv(containerId, rows) {
 
 function rows(containerId, items, empty = "No data") {
   $(containerId).innerHTML = items.join("") || `<div class="empty-row">${esc(empty)}</div>`;
+}
+
+function renderLoadingState() {
+  $("updatedAt").textContent = "Scanning hardware...";
+  $("updateStatus").textContent = "Checking updates";
+  ["cpuUtil", "gpuUtil", "ramValue", "netValue", "healthText"].forEach((id) => {
+    const el = $(id);
+    if (el) el.textContent = "Loading";
+  });
+  ["cpuDetails", "gpuDetails", "ramDetails", "netDetails"].forEach((id) => {
+    const el = $(id);
+    if (el) el.textContent = "Collecting telemetry";
+  });
+  ["cpuUtilBar", "gpuUtilBar", "ramBar"].forEach((id) => setBar(id, 18));
+  $("summaryGrid").innerHTML = Array.from({ length: 8 }, () => `
+    <div class="summary-card loading-card">
+      <span></span>
+      <strong></strong>
+      <small></small>
+    </div>
+  `).join("");
+  rows("diskList", ["<div class=\"empty-row loading-line\">Reading volumes</div>"]);
+  rows("eventList", ["<div class=\"empty-row loading-line\">Reading system signals</div>"]);
+  drawStressCanvasIdle();
+}
+
+function normalizeSettings(value = {}) {
+  const theme = value.theme === "light" ? "light" : "dark";
+  const requestedPoll = Number(value.livePollMs || value.pollIntervalMs || 1000);
+  const livePollMs = POLL_INTERVALS.includes(requestedPoll) ? requestedPoll : 1000;
+  return { theme, livePollMs };
+}
+
+function loadSettings() {
+  try {
+    state.settings = normalizeSettings(JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"));
+  } catch {
+    state.settings = normalizeSettings();
+  }
+}
+
+function saveSettings() {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+}
+
+function loadBenchResults() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(BENCH_KEY) || "{}");
+    if (saved && typeof saved === "object") {
+      state.bench = {
+        cpu: saved.bench?.cpu || null,
+        memory: saved.bench?.memory || null,
+        gpu: saved.bench?.gpu || null,
+        sensors: saved.bench?.sensors || null
+      };
+      state.stress.result = saved.stressResult || null;
+    }
+  } catch {}
+}
+
+function saveBenchResults() {
+  localStorage.setItem(BENCH_KEY, JSON.stringify({
+    savedAt: new Date().toISOString(),
+    bench: state.bench,
+    stressResult: state.stress.result
+  }));
+}
+
+function formatPollInterval(ms) {
+  return ms < 1000 ? `${ms} ms` : `${ms / 1000}s`;
+}
+
+function formatAge(ms) {
+  if (!Number.isFinite(Number(ms))) return "fresh";
+  const value = Number(ms);
+  return value < 1000 ? `${Math.max(0, Math.round(value))} ms old` : `${(value / 1000).toFixed(1)}s old`;
+}
+
+function formatUpdatedAt(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return "updated now";
+  const now = new Date();
+  const sameDay = date.toDateString() === now.toDateString();
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  }).format(date);
+  if (sameDay) return `updated ${time}`;
+  const day = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "2-digit"
+  }).format(date);
+  return `updated ${day}, ${time}`;
+}
+
+function parseDateValue(value) {
+  const text = prettyValue(value, "").trim();
+  if (!text) return null;
+  const wmi = text.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
+  if (wmi) {
+    const [, year, month, day, hour, minute, second] = wmi;
+    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const ymd = text.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/);
+  if (ymd) {
+    const [, year, month, day] = ymd;
+    const date = new Date(Number(year), Number(month) - 1, Number(day));
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatDate(value, fallback = "Unknown") {
+  const date = parseDateValue(value);
+  if (!date) return fallback;
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit"
+  }).format(date);
+}
+
+function formatDateTime(value, fallback = "Unknown") {
+  const date = parseDateValue(value);
+  if (!date) return fallback;
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function titleCaseStatus(value, fallback = "-") {
+  const text = prettyValue(value, fallback);
+  return text === fallback ? text : text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function renderSettings() {
+  const themeSelect = $("settingsThemeSelect");
+  const pollSelect = $("settingsPollInterval");
+  if (themeSelect) themeSelect.value = state.settings.theme;
+  if (pollSelect) pollSelect.value = String(state.settings.livePollMs);
+  const status = $("settingsStatus");
+  if (status) status.textContent = `${titleCaseStatus(state.settings.theme)} · live ${formatPollInterval(state.settings.livePollMs)}`;
+}
+
+function applySettings({ persist = false, restart = false } = {}) {
+  document.body.dataset.theme = state.settings.theme;
+  renderSettings();
+  if (persist) saveSettings();
+  if (restart) startPolling();
+}
+
+function updateSettingFromControls() {
+  state.settings = normalizeSettings({
+    theme: $("settingsThemeSelect")?.value,
+    livePollMs: Number($("settingsPollInterval")?.value || 1000)
+  });
+  applySettings({ persist: true, restart: true });
 }
 
 function classFor(value, warn, bad) {
@@ -163,11 +498,14 @@ function renderRadar(snapshot) {
   const cx = w / 2;
   const cy = h / 2 + 6;
   const maxR = Math.min(w, h) * 0.36;
+  const lightTheme = document.body.dataset.theme === "light";
+  const gridColor = lightTheme ? [23, 33, 39] : [244, 241, 234];
+  const grid = (alpha) => `rgba(${gridColor[0]}, ${gridColor[1]}, ${gridColor[2]}, ${alpha})`;
 
   ctx.clearRect(0, 0, w, h);
   for (let ring = 1; ring <= 4; ring++) {
     ctx.beginPath();
-    ctx.strokeStyle = `rgba(244, 241, 234, ${0.06 + ring * 0.025})`;
+    ctx.strokeStyle = grid(lightTheme ? 0.1 + ring * 0.045 : 0.06 + ring * 0.025);
     for (let i = 0; i < values.length; i++) {
       const a = -Math.PI / 2 + i * (Math.PI * 2 / values.length);
       const r = maxR * ring / 4;
@@ -184,9 +522,9 @@ function renderRadar(snapshot) {
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.lineTo(cx + Math.cos(a) * maxR, cy + Math.sin(a) * maxR);
-    ctx.strokeStyle = "rgba(244, 241, 234, 0.08)";
+    ctx.strokeStyle = grid(lightTheme ? 0.18 : 0.08);
     ctx.stroke();
-    ctx.fillStyle = "rgba(244, 241, 234, 0.62)";
+    ctx.fillStyle = grid(lightTheme ? 0.72 : 0.62);
     ctx.font = "12px Segoe UI";
     ctx.textAlign = "center";
     ctx.fillText(labels[i], cx + Math.cos(a) * (maxR + 24), cy + Math.sin(a) * (maxR + 24));
@@ -246,16 +584,16 @@ function verdictCard(title, status, detail) {
 function renderSuite(snapshot) {
   const inv = snapshot.inventory || {};
   const modules = [
-    ["Inventory", "AIDA64 class", `${inv.pnpDevices?.length || 0} devices · ${inv.systemDrivers?.length || 0} drivers`],
-    ["CPU", "CPU-Z class", `${inv.cpu?.cores || "-"}C / ${inv.cpu?.threads || "-"}T · ${inv.cpu?.socket || "-"}`],
-    ["GPU", "GPU-Z class", `${inv.gpu?.name || "-"} · ${snapshot.gpu?.temp ?? "-"}°C`],
-    ["Storage", "SMART view", `${inv.physicalDisks?.length || 0} drives · ${inv.volumes?.length || 0} volumes`],
-    ["Stability", "Lab mode", calculateRigScore().score ? `RigScore ${calculateRigScore().score}` : "ready"],
-    ["Report", "portable JSON", `${state.toolkit?.available || 0}/${state.toolkit?.total || 0} bridges found`]
+    ["Inventory", "AIDA64 class", `${inv.pnpDevices?.length || 0} devices · ${inv.systemDrivers?.length || 0} drivers`, "list"],
+    ["CPU", "CPU-Z class", `${inv.cpu?.cores || "-"}C / ${inv.cpu?.threads || "-"}T · ${inv.cpu?.socket || "-"}`, "chip"],
+    ["GPU", "GPU-Z class", `${inv.gpu?.name || "-"} · ${snapshot.gpu?.temp ?? "-"}°C`, "gpu"],
+    ["Storage", "SMART view", `${inv.physicalDisks?.length || 0} drives · ${inv.volumes?.length || 0} volumes`, "hardDrive"],
+    ["Stability", "Lab mode", calculateRigScore().score ? `RigScore ${calculateRigScore().score}` : "ready", "flame"],
+    ["Report", "portable JSON", `${state.toolkit?.available || 0}/${state.toolkit?.total || 0} bridges found`, "download"]
   ];
-  $("suiteGrid").innerHTML = modules.map(([title, badge, detail]) => `
+  $("suiteGrid").innerHTML = modules.map(([title, badge, detail, icon]) => `
     <div class="suite-card">
-      <div class="suite-title"><strong>${esc(title)}</strong><span>${esc(badge)}</span></div>
+      <div class="suite-title"><strong><span class="suite-icon">${iconSvg(icon)}</span>${esc(title)}</strong><span>${esc(badge)}</span></div>
       <p>${esc(detail)}</p>
     </div>
   `).join("");
@@ -308,21 +646,31 @@ function formatSeconds(ms) {
   return mins ? `${mins}m ${String(rest).padStart(2, "0")}s` : `${rest}s`;
 }
 
+function setBenchBusy(buttonId, busy) {
+  const button = $(buttonId);
+  if (!button) return;
+  button.disabled = busy;
+  button.classList.toggle("is-busy", busy);
+  const label = buttonId === "cpuBenchButton" ? "Run CPU Load" : buttonId === "memoryBenchButton" ? "Run RAM Load" : buttonId === "gpuBenchButton" ? "Run GPU Render" : "Check Sensors";
+  const icon = buttonId === "cpuBenchButton" ? "chip" : buttonId === "memoryBenchButton" ? "database" : buttonId === "gpuBenchButton" ? "gpu" : "activity";
+  setCommandButtonLabel(button, busy ? "Running..." : label, busy ? "activity" : icon);
+}
+
 function renderLab(snapshot) {
   const toolkit = state.toolkit?.tools || [];
   const has = (id) => toolkit.find((tool) => tool.id === id)?.available;
   const { cpu, memory, gpu, sensors } = state.bench;
-  $("memoryLabState").textContent = memory ? `${memory.gbps} GB/s · ${memory.elapsedMs} ms` : has("y-cruncher") || has("memtest86") ? "Bridge available · quick RAM bench ready" : "Quick RAM bench ready";
-  $("gpuLabState").textContent = gpu ? `${gpu.fps} fps · ${gpu.frames} frames` : has("furmark") || has("occt") ? "Bridge available · browser render bench ready" : "Browser render bench ready";
-  $("sensorLabState").textContent = sensors ? sensorLine(sensors) : has("librehardwaremonitor") || has("hwinfo") || has("lm-sensors") || has("powermetrics") ? "Native sensor bridge available" : "Quick sensor sweep ready";
-  $("cpuBenchResult").textContent = cpu ? `${cpu.score} hashes/sec · ${cpu.elapsedMs} ms` : `Current CPU load ${pct(snapshot.cpu?.loadPct)}`;
-  setBar("cpuBenchBar", cpu ? clamp(cpu.score / 700000 * 100) : snapshot.cpu?.loadPct);
-  setBar("memoryBenchBar", memory ? clamp(memory.gbps / 30 * 100) : snapshot.memory?.usedPct);
+  $("memoryLabState").textContent = memory ? `${memory.heldMb} MB held · ${memory.cycles} sweeps · ${memory.elapsedMs} ms` : has("y-cruncher") || has("memtest86") ? "Bridge available · RAM load check ready" : "RAM load check ready";
+  $("gpuLabState").textContent = gpu ? `${gpu.workUnits.toLocaleString("en-US")} work · ${gpu.fps} fps · ${gpu.elapsedMs} ms` : has("furmark") || has("occt") ? "Bridge available · WebGL load check ready" : "WebGL load check ready";
+  $("sensorLabState").textContent = sensors ? sensorLine(sensors) : has("librehardwaremonitor") || has("hwinfo") || has("lm-sensors") || has("powermetrics") ? "Sensor bridge available" : "Quick sensor check ready";
+  $("cpuBenchResult").textContent = cpu ? `${cpu.opsPerSec.toLocaleString("en-US")} ops/sec · ${cpu.workers} workers · ${cpu.elapsedMs} ms` : `Current CPU load ${pct(snapshot.cpu?.loadPct)}`;
+  setBar("cpuBenchBar", cpu ? clamp(cpu.avgLoadPct || cpu.workers * 4) : snapshot.cpu?.loadPct);
+  setBar("memoryBenchBar", memory ? clamp(memory.heldMb / Math.max(memory.targetMb || 1, 1) * 100) : snapshot.memory?.usedPct);
   setBar("sensorBenchBar", sensors ? clamp(100 - Math.max(sensors.cpu?.loadPct || 0, sensors.memory?.usedPct || 0, sensors.gpu?.util || 0)) : 15);
   kv("benchResultList", [
-    ["CPU score", cpu?.score || "-"],
-    ["Memory score", memory ? `${memory.score} · ${memory.gbps} GB/s` : "-"],
-    ["GPU score", gpu ? `${gpu.score} · ${gpu.fps} fps` : "-"],
+    ["CPU load check", cpu ? `${cpu.opsPerSec.toLocaleString("en-US")} ops/sec · ${cpu.workers} workers` : "-"],
+    ["Memory load check", memory ? `${memory.heldMb}/${memory.targetMb} MB · ${memory.cycles} sweeps` : "-"],
+    ["GPU load check", gpu ? `${gpu.workUnits.toLocaleString("en-US")} work · ${gpu.fps} fps` : "-"],
     ["Sensor sweep", sensors ? sensorLine(sensors) : "-"],
     ["Stress result", state.stress.result ? `${state.stress.result.score}/100 · ${state.stress.result.duration}` : "-"],
     ["Overall RigScore", calculateRigScore().score || "-"]
@@ -332,8 +680,8 @@ function renderLab(snapshot) {
     verdictCard("Full JSON export", "ok", "/api/export"),
     verdictCard("Snapshot API", "ok", "/api/snapshot"),
     verdictCard("Toolkit API", state.toolkit ? "ok" : "warn", state.toolkit ? `${state.toolkit.available}/${state.toolkit.total} integrations` : "not loaded"),
-    verdictCard("Native bridges", state.toolkit?.available ? "ok" : "warn", state.toolkit ? `${state.toolkit.available}/${state.toolkit.total} detected on ${state.toolkit.platform?.platform || "this OS"}` : "not loaded"),
-    verdictCard("Native runners", (state.nativeRunners?.profiles || []).some((profile) => profile.available) ? "ok" : "warn", state.nativeRunners ? `${(state.nativeRunners.profiles || []).filter((profile) => profile.available).length}/${(state.nativeRunners.profiles || []).length} launch profiles available` : "not loaded"),
+    verdictCard("External bridges", state.toolkit?.available ? "ok" : "warn", state.toolkit ? `${state.toolkit.available}/${state.toolkit.total} detected on ${state.toolkit.platform?.platform || "this OS"}` : "not loaded"),
+    verdictCard("Stress launchers", (state.nativeRunners?.profiles || []).some((profile) => profile.available) ? "ok" : "warn", state.nativeRunners ? `${(state.nativeRunners.profiles || []).filter((profile) => profile.available).length}/${(state.nativeRunners.profiles || []).length} launch profiles available` : "not loaded"),
     verdictCard("Comparable score", calculateRigScore().score ? "ok" : "warn", calculateRigScore().score ? `${calculateRigScore().score} points` : "run CPU/RAM/GPU tests"),
     verdictCard("Stress test", state.stress.result ? "ok" : "warn", state.stress.result ? `${state.stress.result.duration}, ${state.stress.result.score}/100 stability` : "ready for explicit start")
   ]);
@@ -351,7 +699,9 @@ function stressOptions() {
     cpu: $("stressCpuToggle")?.checked,
     memory: $("stressMemoryToggle")?.checked,
     gpu: $("stressGpuToggle")?.checked,
-    durationSec: Number($("stressDuration")?.value || 60)
+    durationSec: Number($("stressDuration")?.value || 60),
+    targetMb: Number($("stressMemoryTarget")?.value || 4096),
+    gpuIntensity: Number($("stressGpuIntensity")?.value || 2)
   };
 }
 
@@ -365,7 +715,7 @@ function setNativeRunnerLog(items) {
 }
 
 function setStressControls(active) {
-  ["stressCpuToggle", "stressMemoryToggle", "stressGpuToggle", "stressDuration"].forEach((id) => {
+  ["stressCpuToggle", "stressMemoryToggle", "stressGpuToggle", "stressDuration", "stressMemoryTarget", "stressGpuIntensity"].forEach((id) => {
     const el = $(id);
     if (el) el.disabled = active;
   });
@@ -389,21 +739,26 @@ function renderNativeRunners() {
   if (!select) return;
   const current = select.value;
   select.innerHTML = profiles.map((profile) => `
-    <option value="${esc(profile.id)}" ${profile.available ? "" : "disabled"}>
-      ${esc(profile.label)} ${profile.available ? "" : "(missing)"}
+    <option value="${esc(profile.id)}">
+      ${esc(profile.label)} ${profile.available ? "" : "(not found)"}
     </option>
   `).join("");
   if (profiles.some((profile) => profile.id === current)) select.value = current;
   const selected = selectedNativeProfile() || profiles.find((profile) => profile.available) || profiles[0];
   if (selected && select.value !== selected.id) select.value = selected.id;
 
-  $("nativeRunnerState").textContent = status.active ? "running" : status.exitCode !== null && status.exitCode !== undefined ? "finished" : "idle";
-  $("nativeRunnerPid").textContent = status.pid ? `PID ${status.pid}` : "no process";
+  $("nativeRunnerState").textContent = status.active ? "Running" : status.exitCode !== null && status.exitCode !== undefined ? "Finished" : "Idle";
+  $("nativeRunnerPid").textContent = status.pid ? `PID ${status.pid}` : "No process";
   $("nativeRunnerTool").textContent = selected?.label || "-";
-  $("nativeRunnerRisk").textContent = selected?.risk || "-";
+  $("nativeRunnerRisk").textContent = titleCaseStatus(selected?.risk);
   $("nativeRunnerElapsed").textContent = status.elapsedMs ? formatSeconds(status.elapsedMs) : "0s";
-  $("nativeRunnerAvailable").textContent = selected ? selected.available ? "yes" : "missing" : "-";
+  $("nativeRunnerAvailable").textContent = selected ? selected.available ? "Ready" : "Not found" : "-";
   $("nativeRunnerStartButton").disabled = Boolean(status.active) || !selected?.available;
+  $("nativeRunnerStartButton").title = !selected
+    ? "No external tool profile selected"
+    : selected.available
+      ? `Start ${selected.label}`
+      : `${selected.label} is not detected. Install it or add the executable to PATH.`;
   $("nativeRunnerStopButton").disabled = !status.active;
   if (!status.active && selected) {
     setNativeRunnerLog([
@@ -411,13 +766,13 @@ function renderNativeRunners() {
       selected.safety?.recommendedMonitor || "Monitor temperatures and stop if the system becomes unstable.",
       `Duration cap: ${formatSeconds((selected.safety?.maxDurationSec || selected.durationMaxSec || 0) * 1000)}`,
       status.report ? `Last report: ${status.report.verdict} · ${formatSeconds(status.report.elapsedMs || 0)}` : null,
-      selected.executable || "Executable not detected",
-      `Required confirmation: ${state.nativeRunners?.acknowledgement || "START_NATIVE_STRESS"}`
+      selected.executable || `${selected.toolId} executable not detected. Install the tool or add it to PATH.`,
+      "Confirmation required before launch."
     ].filter(Boolean));
   } else if (status.active) {
     setNativeRunnerLog([
       `${status.label} is running`,
-      `elapsed ${formatSeconds(status.elapsedMs || 0)} / ${formatSeconds(status.durationMs || 0)}`,
+      `Elapsed ${formatSeconds(status.elapsedMs || 0)} / ${formatSeconds(status.durationMs || 0)}`,
       selected?.safety?.recommendedMonitor || "Watch thermals and system stability.",
       ...(status.output || []).slice(-4)
     ]);
@@ -437,11 +792,11 @@ function renderStressPanel() {
   $("stressCpuOps").textContent = stress.cpuOps ? stress.cpuOps.toLocaleString("en-US") : "-";
   const browserMemoryMb = Math.round(stress.memoryBlocks.reduce((sum, block) => sum + block.byteLength, 0) / 1024 / 1024);
   $("stressMemoryHeld").textContent = `${Math.max(stress.memoryHeldMb || 0, browserMemoryMb)} MB`;
-  $("stressGpuFrames").textContent = stress.gpuFrames ? stress.gpuFrames.toLocaleString("en-US") : "-";
+  $("stressGpuFrames").textContent = stress.gpuWorkUnits ? stress.gpuWorkUnits.toLocaleString("en-US") : "-";
   setBar("stressProgressBar", stress.active ? progress : stress.result ? stress.result.score : 0);
-  $("stressCpuState").textContent = stress.active && stress.serverCpu ? "server load" : $("stressCpuToggle").checked ? "armed" : "off";
-  $("stressMemoryState").textContent = stress.active && stress.serverMemory ? `${stress.memoryCycles || 0} cycles` : stress.active && stress.memoryBlocks.length ? "holding" : $("stressMemoryToggle").checked ? "armed" : "off";
-  $("stressGpuState").textContent = stress.active && stress.raf ? "rendering" : $("stressGpuToggle").checked ? "armed" : "off";
+  $("stressCpuState").textContent = stress.active && stress.serverCpu ? "Server load" : $("stressCpuToggle").checked ? "Ready" : "Off";
+  $("stressMemoryState").textContent = stress.active && stress.serverMemory ? `${stress.memoryCycles || 0} cycles` : stress.active && stress.memoryBlocks.length ? "Holding" : $("stressMemoryToggle").checked ? "Ready" : "Off";
+  $("stressGpuState").textContent = stress.active && stress.raf ? `${stress.gpuEngine || "render"} ${stress.gpuPasses || ""}`.trim() : $("stressGpuToggle").checked ? "Ready" : "Off";
 }
 
 async function startCpuStress(durationSec) {
@@ -464,7 +819,13 @@ async function startServerStress(options) {
   const response = await fetch("/api/stress/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...options, workers: threads })
+    body: JSON.stringify({
+      cpu: options.cpu,
+      memory: options.memory,
+      durationSec: options.durationSec,
+      targetMb: options.targetMb,
+      workers: threads
+    })
   });
   if (!response.ok) throw new Error(await parseApiError(response));
   const result = await response.json();
@@ -490,11 +851,14 @@ async function pollCpuStress() {
     const status = await response.json();
     const cpu = status.engines?.cpu || {};
     const memory = status.engines?.memory || {};
+    const memoryHeldMb = memory.active
+      ? Number(memory.heldMb || 0)
+      : Number(memory.peakHeldMb || memory.lastHeldMb || memory.heldMb || 0);
     state.stress.cpuOps = cpu.ops || state.stress.cpuOps;
-    state.stress.memoryHeldMb = memory.heldMb || state.stress.memoryHeldMb;
+    state.stress.memoryHeldMb = memoryHeldMb || state.stress.memoryHeldMb;
     state.stress.memoryCycles = memory.cycles || state.stress.memoryCycles;
-    $("stressCpuState").textContent = cpu.active ? `${cpu.workers} workers` : state.stress.serverCpu ? "finished" : "off";
-    $("stressMemoryState").textContent = memory.active ? `${memory.cycles || 0} cycles` : state.stress.serverMemory ? "finished" : "off";
+  $("stressCpuState").textContent = cpu.active ? `${cpu.workers} workers` : state.stress.serverCpu ? "Finished" : "Off";
+  $("stressMemoryState").textContent = memory.active ? `${memory.cycles || 0} cycles` : state.stress.serverMemory ? "Finished" : "Off";
   } catch (error) {
     console.error(error);
   }
@@ -513,14 +877,17 @@ function startMemoryStress() {
   fill();
 }
 
-function startGpuStress() {
-  const canvas = $("gpuStressCanvas");
+function startGpuStress(intensity = 2) {
+  const canvas = resetCanvasElement("gpuStressCanvas");
   const gl = canvas.getContext("webgl2", { antialias: false, powerPreference: "high-performance" }) ||
     canvas.getContext("webgl", { antialias: false, powerPreference: "high-performance" });
   if (!gl) {
     startGpuStress2d(canvas);
     return;
   }
+  const passes = intensity >= 3 ? 160 : intensity >= 2 ? 96 : 42;
+  state.stress.gpuEngine = "webgl";
+  state.stress.gpuPasses = passes;
   const vertexSource = `
     attribute vec2 position;
     void main() { gl_Position = vec4(position, 0.0, 1.0); }
@@ -529,23 +896,17 @@ function startGpuStress() {
     precision highp float;
     uniform vec2 resolution;
     uniform float time;
+
     void main() {
-      vec2 uv = (gl_FragCoord.xy * 2.0 - resolution.xy) / min(resolution.x, resolution.y);
-      vec3 color = vec3(0.0);
-      float acc = 0.0;
-      for (int j = 0; j < 8; j++) {
-        vec2 p = uv * (1.2 + float(j) * 0.11);
-        for (int i = 0; i < 72; i++) {
-          float fi = float(i);
-          p = abs(p) / max(dot(p, p), 0.16) - vec2(0.78 + 0.02 * sin(time), 0.62);
-          acc += exp(-abs(length(p) - 0.72)) * 0.0035;
-          p += vec2(sin(time * 0.7 + fi), cos(time * 0.6 - fi)) * 0.003;
-        }
+      vec2 p = (gl_FragCoord.xy * 2.0 - resolution.xy) / min(resolution.x, resolution.y);
+      float v = 0.0;
+      for (int i = 0; i < 96; i++) {
+        float fi = float(i);
+        p = abs(p) / max(dot(p, p), 0.18) - vec2(0.74 + 0.04 * sin(time + fi), 0.58);
+        v += exp(-abs(length(p) - 0.66)) * 0.006;
       }
-      color.r = acc * 3.3 + 0.12 * sin(time + uv.x * 9.0);
-      color.g = acc * 1.8 + 0.20 * cos(time * 0.8 + uv.y * 7.0);
-      color.b = acc * 4.2 + 0.22;
-      gl_FragColor = vec4(color, 1.0);
+      vec3 color = vec3(v * 2.0 + 0.03, v * 1.1 + 0.12, v * 2.8 + 0.2);
+      gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
     }
   `;
   const makeShader = (type, source) => {
@@ -556,8 +917,14 @@ function startGpuStress() {
     return shader;
   };
   const program = gl.createProgram();
-  gl.attachShader(program, makeShader(gl.VERTEX_SHADER, vertexSource));
-  gl.attachShader(program, makeShader(gl.FRAGMENT_SHADER, fragmentSource));
+  try {
+    gl.attachShader(program, makeShader(gl.VERTEX_SHADER, vertexSource));
+    gl.attachShader(program, makeShader(gl.FRAGMENT_SHADER, fragmentSource));
+  } catch (error) {
+    console.error(error);
+    startGpuStress2d(canvas);
+    return;
+  }
   gl.linkProgram(program);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     startGpuStress2d(canvas);
@@ -571,22 +938,19 @@ function startGpuStress() {
   const time = gl.getUniformLocation(program, "time");
   const draw = () => {
     if (!state.stress.active) return;
-    const rect = canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = Math.max(960, Math.round(rect.width * dpr));
-    const h = Math.max(360, Math.round(rect.height * dpr));
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
-    }
+    resizeCanvasForGpuStress(canvas, intensity);
     gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0.02, 0.03, 0.04, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(program);
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
     gl.uniform2f(resolution, canvas.width, canvas.height);
     gl.uniform1f(time, performance.now() * 0.001);
-    for (let pass = 0; pass < 4; pass++) gl.drawArrays(gl.TRIANGLES, 0, 6);
+    for (let pass = 0; pass < passes; pass++) gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.flush();
     state.stress.gpuFrames++;
+    state.stress.gpuWorkUnits += passes;
     state.stress.raf = requestAnimationFrame(draw);
   };
   state.stress.raf = requestAnimationFrame(draw);
@@ -594,25 +958,89 @@ function startGpuStress() {
 
 function startGpuStress2d(canvas) {
   const ctx = canvas.getContext("2d");
+  state.stress.gpuEngine = "canvas-2d";
+  state.stress.gpuPasses = 1;
   const draw = () => {
     if (!state.stress.active) return;
+    resizeCanvasToDisplaySize(canvas, 960, 360);
     const t = performance.now() * 0.004;
     const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, `hsl(${(t * 70) % 360}, 92%, 55%)`);
-    gradient.addColorStop(0.5, `hsl(${(t * 110 + 80) % 360}, 80%, 46%)`);
-    gradient.addColorStop(1, `hsl(${(t * 150 + 190) % 360}, 92%, 58%)`);
+    gradient.addColorStop(0, "#061317");
+    gradient.addColorStop(0.48, `hsl(${(t * 50 + 178) % 360}, 74%, 27%)`);
+    gradient.addColorStop(1, "#241015");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (let i = 0; i < 5000; i++) {
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 2200; i++) {
       const x = (Math.sin(i * 0.87 + t) * 0.5 + 0.5) * canvas.width;
       const y = (Math.cos(i * 1.21 + t * 1.4) * 0.5 + 0.5) * canvas.height;
-      ctx.fillStyle = `rgba(${(i * 19) % 255}, 255, ${(i * 43) % 255}, 0.05)`;
-      ctx.fillRect(x, y, 18, 18);
+      ctx.fillStyle = i % 3 === 0 ? "rgba(255, 118, 78, 0.035)" : "rgba(84, 214, 255, 0.035)";
+      ctx.fillRect(x, y, 22, 22);
+    }
+    ctx.globalCompositeOperation = "source-over";
+    ctx.strokeStyle = "rgba(244, 241, 234, 0.08)";
+    ctx.lineWidth = 1;
+    for (let x = 0; x < canvas.width; x += canvas.width / 18) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
+    }
+    for (let y = 0; y < canvas.height; y += canvas.height / 8) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
     }
     state.stress.gpuFrames++;
+    state.stress.gpuWorkUnits++;
     state.stress.raf = requestAnimationFrame(draw);
   };
   state.stress.raf = requestAnimationFrame(draw);
+}
+
+function drawStressCanvasIdle() {
+  const canvas = resetCanvasElement("gpuStressCanvas");
+  if (!canvas || state.stress.active) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  resizeCanvasToDisplaySize(canvas, 960, 360);
+  const w = canvas.width;
+  const h = canvas.height;
+  const gradient = ctx.createLinearGradient(0, 0, w, h);
+  gradient.addColorStop(0, "#071418");
+  gradient.addColorStop(0.55, "#11151a");
+  gradient.addColorStop(1, "#221419");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = "rgba(84, 214, 255, 0.11)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= w; x += w / 16) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= h; y += h / 6) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(141, 255, 159, 0.72)";
+  ctx.lineWidth = Math.max(2, w / 720);
+  ctx.beginPath();
+  for (let x = 0; x <= w; x += 6) {
+    const p = x / w;
+    const y = h * 0.5 + Math.sin(p * Math.PI * 8) * h * 0.08 + Math.sin(p * Math.PI * 31) * h * 0.025;
+    if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  const pulse = ctx.createRadialGradient(w * 0.72, h * 0.42, 0, w * 0.72, h * 0.42, h * 0.48);
+  pulse.addColorStop(0, "rgba(255, 190, 92, 0.24)");
+  pulse.addColorStop(1, "rgba(255, 190, 92, 0)");
+  ctx.fillStyle = pulse;
+  ctx.fillRect(0, 0, w, h);
 }
 
 async function pollStressSensors() {
@@ -627,7 +1055,7 @@ async function pollStressSensors() {
         "running",
         sensorLine(state.stress.lastSensors),
         `CPU ops ${state.stress.cpuOps.toLocaleString("en-US")}`,
-        `GPU frames ${state.stress.gpuFrames}`
+        `GPU work ${state.stress.gpuWorkUnits.toLocaleString("en-US")}`
       ]);
     }
   } catch (error) {
@@ -648,6 +1076,9 @@ async function startStressTest() {
     durationMs: options.durationSec * 1000,
     cpuOps: 0,
     gpuFrames: 0,
+    gpuWorkUnits: 0,
+    gpuEngine: null,
+    gpuPasses: 0,
     lastSensors: null,
     result: null,
     memoryBlocks: [],
@@ -658,14 +1089,14 @@ async function startStressTest() {
     memoryCycles: 0
   });
   setStressControls(true);
-  setStressLog([`started ${options.durationSec}s`, options.cpu ? "CPU workers" : "CPU off", options.memory ? "RAM worker" : "RAM off", options.gpu ? "GPU render" : "GPU off"]);
+  setStressLog([`Started ${options.durationSec}s`, options.cpu ? "CPU workers" : "CPU off", options.memory ? `RAM target ${options.targetMb} MB` : "RAM off", options.gpu ? `GPU ${options.gpuIntensity >= 3 ? "extreme" : options.gpuIntensity >= 2 ? "heavy" : "light"}` : "GPU off"]);
   try {
     if (options.cpu || options.memory) await startServerStress(options);
-    if (options.gpu) startGpuStress();
+    if (options.gpu) startGpuStress(options.gpuIntensity);
   } catch (error) {
     console.error(error);
-    stopStressTest("start failed");
-    setStressLog(["start failed", error.message]);
+    stopStressTest("Start failed");
+    setStressLog(["Start failed", error.message]);
     return;
   }
   pollStressSensors();
@@ -702,10 +1133,13 @@ function stopStressTest(reason = "stopped") {
     duration: formatSeconds(elapsedMs),
     cpuOps: state.stress.cpuOps,
     gpuFrames: state.stress.gpuFrames,
+    gpuWorkUnits: state.stress.gpuWorkUnits,
+    gpuEngine: state.stress.gpuEngine,
     memoryMb: Math.max(state.stress.memoryHeldMb || 0, Math.round(state.stress.memoryBlocks.reduce((sum, block) => sum + block.byteLength, 0) / 1024 / 1024)),
     memoryCycles: state.stress.memoryCycles,
     sensors
   };
+  saveBenchResults();
   state.stress.memoryBlocks = [];
   state.stress.workers = [];
   state.stress.serverCpu = false;
@@ -713,6 +1147,8 @@ function stopStressTest(reason = "stopped") {
   state.stress.memoryHeldMb = 0;
   state.stress.memoryCycles = 0;
   state.stress.raf = null;
+  state.stress.gpuEngine = null;
+  state.stress.gpuPasses = 0;
   setStressControls(false);
   setStressLog([
     reason,
@@ -720,32 +1156,120 @@ function stopStressTest(reason = "stopped") {
     `duration ${state.stress.result.duration}`,
     sensors ? sensorLine(sensors) : "sensor sweep not available"
   ]);
+  drawStressCanvasIdle();
   if (state.snapshot) renderLab(state.snapshot);
 }
 
+function matchTier(text, tiers, fallback = 35) {
+  const normalized = prettyValue(text, "").toLowerCase();
+  const tier = tiers.find(([pattern]) => pattern.test(normalized));
+  return tier ? tier[1] : fallback;
+}
+
+function gpuHardwareScore(name) {
+  return matchTier(name, [
+    [/rtx\s*4090|4090/, 100],
+    [/rtx\s*4080|4080|rx\s*7900\s*xtx/, 91],
+    [/rtx\s*3090|3090|rx\s*7900\s*xt/, 85],
+    [/rtx\s*3080|3080|rtx\s*4070\s*ti|4070\s*ti|rx\s*7800\s*xt/, 76],
+    [/rtx\s*4070|4070|rx\s*6800\s*xt/, 70],
+    [/rtx\s*3070|3070|rx\s*7700\s*xt|rx\s*6800/, 62],
+    [/rtx\s*3060\s*ti|3060\s*ti|rx\s*6700\s*xt/, 55],
+    [/rtx\s*3060|3060|rx\s*7600|rx\s*6650/, 46],
+    [/rx\s*6600|gtx\s*1660|1660/, 35],
+    [/intel|uhd|iris|vega/, 18]
+  ], name ? 40 : 0);
+}
+
+function cpuHardwareScore(cpu = {}) {
+  const name = prettyValue(cpu.name, "");
+  const named = matchTier(name, [
+    [/7950x|14900|13900|threadripper/, 96],
+    [/7900x|7900|13700|14700|12900|5950x/, 84],
+    [/5900x|5800x3d|7800x3d|12700|13600|14600/, 80],
+    [/7700|5800x|5700x|12600|13500/, 68],
+    [/5600x|5600|12400|13400|11400/, 52],
+    [/ryzen\s*5|core\s*i5/, 45],
+    [/ryzen\s*7|core\s*i7/, 58],
+    [/ryzen\s*9|core\s*i9/, 72]
+  ], 0);
+  const cores = Number(cpu.cores || 0);
+  const threads = Number(cpu.threads || 0);
+  const topology = cores ? clamp(cores * 5 + threads * 1.1, 20, 92) : 0;
+  if (!named && !topology) return 0;
+  return Math.round(named && topology ? named * 0.7 + topology * 0.3 : named || topology);
+}
+
+function memoryHardwareScore(memory = {}) {
+  const totalGb = Number(memory.totalGb || 0);
+  if (totalGb >= 96) return 95;
+  if (totalGb >= 64) return 85;
+  if (totalGb >= 48) return 76;
+  if (totalGb >= 32) return 65;
+  if (totalGb >= 16) return 45;
+  if (totalGb >= 8) return 25;
+  return totalGb ? 12 : 0;
+}
+
+function storageHardwareScore(disks = []) {
+  const text = disks.map((disk) => `${prettyValue(disk.mediaType, "")} ${prettyValue(disk.busType, "")} ${prettyValue(disk.model, "")}`).join(" ").toLowerCase();
+  if (!text) return 35;
+  if (text.includes("nvme")) return 75;
+  if (text.includes("ssd")) return 55;
+  return 35;
+}
+
+function scoreLabel(score) {
+  if (score >= 9000) return "Elite desktop";
+  if (score >= 7500) return "High-end desktop";
+  if (score >= 6000) return "Strong gaming PC";
+  if (score >= 4000) return "Mainstream PC";
+  return score ? "Entry setup" : "Waiting for inventory";
+}
+
+function profileOwnerLabel(profile) {
+  const source = profile?.source === "sample" ? "sample" : profile?.source === "local" ? "local" : "";
+  return [prettyValue(profile?.owner, "unknown"), source].filter(Boolean).join(" · ");
+}
+
 function calculateRigScore() {
-  const { cpu, memory, gpu, sensors } = state.bench;
-  const parts = [
-    cpu ? clamp(cpu.score / 700000 * 100) : null,
-    memory ? clamp(memory.gbps / 30 * 100) : null,
-    gpu ? clamp(gpu.fps / 180 * 100) : null,
-    sensors ? clamp(100 - Math.max(sensors.gpu?.temp ? (sensors.gpu.temp - 35) * 1.4 : 0, sensors.memory?.usedPct || 0) * 0.35) : null,
-    state.stress.result ? state.stress.result.score : null
-  ].filter((n) => n !== null);
-  if (!parts.length) return { score: 0, parts };
-  const avg = parts.reduce((sum, n) => sum + n, 0) / parts.length;
-  return { score: Math.round(avg * 100), parts };
+  const inv = state.snapshot?.inventory || {};
+  const parts = {
+    cpu: cpuHardwareScore(inv.cpu),
+    gpu: gpuHardwareScore(inv.gpu?.name),
+    memory: memoryHardwareScore(inv.memory),
+    storage: storageHardwareScore(inv.physicalDisks)
+  };
+  if (!parts.cpu && !parts.gpu && !parts.memory) return { score: 0, parts, confidence: 0, penalty: 0 };
+
+  const base = parts.gpu * 0.45 + parts.cpu * 0.35 + parts.memory * 0.15 + parts.storage * 0.05;
+  const sensors = state.bench.sensors || state.stress.result?.sensors;
+  const hotGpuPenalty = sensors?.gpu?.temp ? Math.max(0, sensors.gpu.temp - 82) * 35 : 0;
+  const hotCpuPenalty = sensors?.cpu?.load > 95 && sensors?.cpu?.temp ? Math.max(0, sensors.cpu.temp - 90) * 25 : 0;
+  const memoryShortfall = state.bench.memory
+    ? Math.max(0, 1 - (state.bench.memory.heldMb || 0) / Math.max(state.bench.memory.targetMb || 1, 1)) * 450
+    : 0;
+  const stressPenalty = state.stress.result ? Math.max(0, 85 - state.stress.result.score) * 18 : 0;
+  const penalty = Math.round(hotGpuPenalty + hotCpuPenalty + memoryShortfall + stressPenalty);
+  const score = Math.round(clamp(base, 0, 100) * 100 - penalty);
+  const checks = [state.bench.cpu, state.bench.memory, state.bench.gpu, state.bench.sensors, state.stress.result].filter(Boolean).length;
+  return {
+    score: Math.max(0, Math.min(10000, score)),
+    parts,
+    confidence: Math.min(100, 45 + checks * 11),
+    penalty
+  };
 }
 
 function renderRigScore() {
   const result = calculateRigScore();
   $("rigScoreValue").textContent = result.score || "-";
-  $("rigScoreLabel").textContent = result.score >= 8500 ? "Elite desktop" : result.score >= 6500 ? "Strong gaming PC" : result.score >= 4000 ? "Mainstream PC" : result.score ? "Baseline score" : "Run tests to score this PC";
+  $("rigScoreLabel").textContent = scoreLabel(result.score);
   const rowsHtml = [
-    ["CPU", state.bench.cpu ? `${state.bench.cpu.score} hash/s` : "-"],
-    ["RAM", state.bench.memory ? `${state.bench.memory.gbps} GB/s` : "-"],
-    ["GPU", state.bench.gpu ? `${state.bench.gpu.fps} fps` : "-"],
-    ["Sensors", state.bench.sensors ? sensorLine(state.bench.sensors) : "-"]
+    ["CPU", `${result.parts.cpu || 0}/100${state.bench.cpu ? ` · ${state.bench.cpu.opsPerSec.toLocaleString("en-US")} ops/sec` : ""}`],
+    ["RAM", `${result.parts.memory || 0}/100${state.bench.memory ? ` · ${state.bench.memory.heldMb}/${state.bench.memory.targetMb} MB held` : ""}`],
+    ["GPU", `${result.parts.gpu || 0}/100${state.bench.gpu ? ` · ${state.bench.gpu.workUnits.toLocaleString("en-US")} work` : ""}`],
+    ["Confidence", `${result.confidence || 0}%${result.penalty ? ` · penalty ${result.penalty}` : ""}`]
   ].map(([k, v]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`);
   $("scoreBreakdown").innerHTML = rowsHtml.join("");
 }
@@ -753,22 +1277,26 @@ function renderRigScore() {
 function localProfile() {
   const snapshot = state.snapshot || {};
   const inv = snapshot.inventory || {};
-  const score = calculateRigScore().score || state.savedProfile?.score || 0;
+  const scoreResult = calculateRigScore();
   return {
     id: "local",
+    source: "local",
+    schemaVersion: 2,
     name: `${prettyValue(inv.gpu?.name, "Local")} Rig`,
     owner: prettyValue(inv.system?.user, "you"),
-    score,
+    score: scoreResult.score,
+    scoreLabel: scoreLabel(scoreResult.score),
+    scoreConfidence: scoreResult.confidence,
     cpu: prettyValue(inv.cpu?.name),
     gpu: prettyValue(inv.gpu?.name),
     memory: `${prettyValue(inv.memory?.totalGb)} GB`,
-    storage: `${inv.physicalDisks?.length || 0} drives`,
+    storage: inv.physicalDisks?.length ? `${inv.physicalDisks.length} drives` : "-",
     board: prettyValue(inv.board?.product),
     os: prettyValue(inv.os?.caption),
     bench: {
-      cpu: prettyValue(state.bench.cpu?.score),
-      memory: state.bench.memory ? `${state.bench.memory.gbps} GB/s` : "-",
-      gpu: state.bench.gpu ? `${state.bench.gpu.fps} fps` : "-",
+      cpu: state.bench.cpu ? `${state.bench.cpu.opsPerSec.toLocaleString("en-US")} ops/sec` : "-",
+      memory: state.bench.memory ? `${state.bench.memory.heldMb}/${state.bench.memory.targetMb} MB` : "-",
+      gpu: state.bench.gpu ? `${state.bench.gpu.workUnits.toLocaleString("en-US")} work` : "-",
       sensors: state.bench.sensors ? sensorLine(state.bench.sensors) : "-"
     },
     generatedAt: new Date().toISOString()
@@ -776,8 +1304,10 @@ function localProfile() {
 }
 
 function setupProfiles() {
-  const saved = state.savedProfile ? [state.savedProfile] : [];
-  const remote = state.community?.profiles || [];
+  const saved = state.savedProfile?.schemaVersion === 2 ? [state.savedProfile] : [];
+  const remote = (state.community?.profiles || [])
+    .filter((profile) => profile.id !== "local-saved")
+    .filter((profile) => profile.schemaVersion === 2 || profile.source !== "local");
   const seen = new Set();
   return [localProfile(), ...saved.filter((p) => p.id !== "local-saved"), ...remote, ...demoSetups]
     .filter((profile) => {
@@ -794,11 +1324,11 @@ function renderCommunity() {
   const local = localProfile();
   $("localSetupName").textContent = local.name;
   $("localSetupMeta").textContent = local.score
-    ? `RigScore ${local.score} · ${local.cpu} · sync ${state.community?.status || "local"}`
-    : `${local.cpu} · run Lab tests for a public score`;
+    ? `RigScore ${local.score} · ${local.scoreLabel} · confidence ${local.scoreConfidence}% · sync ${state.community?.status || "local"}`
+    : `${local.cpu} · inventory is still loading`;
   $("setupCards").innerHTML = profiles.map((profile) => `
     <button class="setup-card ${state.selectedSetup === profile.id ? "active" : ""}" data-setup-id="${esc(profile.id)}">
-      <span>${esc(profile.owner)}</span>
+      <span>${esc(profileOwnerLabel(profile))}</span>
       <strong>${esc(profile.name)}</strong>
       <em>${esc(profile.score || "unscored")}</em>
       <small>${esc(profile.cpu)} · ${esc(profile.gpu)}</small>
@@ -813,14 +1343,15 @@ function renderCommunity() {
   rows("leaderboardList", profiles.map((profile, index) => `
     <div class="table-row">
       <strong>#${index + 1} ${esc(profile.name)}</strong>
-      <span>${esc(profile.score || "-")} · ${esc(profile.owner)}</span>
+      <span>${esc(profile.score || "-")} · ${esc(profileOwnerLabel(profile))}</span>
     </div>
   `), "No setup profiles");
   const selected = profiles.find((p) => p.id === state.selectedSetup) || profiles[0];
   kv("compareList", [
     ["Selected", selected.name],
-    ["Owner", selected.owner],
+    ["Owner", profileOwnerLabel(selected)],
     ["RigScore", selected.score || "-"],
+    ["Score type", selected.scoreLabel || (selected.source === "sample" ? "sample reference" : "-")],
     ["CPU", selected.cpu],
     ["GPU", selected.gpu],
     ["Memory", selected.memory],
@@ -832,20 +1363,27 @@ function renderCommunity() {
 }
 
 async function saveLocalProfile() {
-  state.savedProfile = { ...localProfile(), id: "local-saved", name: "Saved Local Snapshot" };
-  localStorage.setItem("rigscope.profile", JSON.stringify(state.savedProfile));
+  const profile = localProfile();
+  const offlineProfile = { ...profile, id: "local-saved", name: "Saved Local Snapshot" };
   try {
     const response = await fetch("/api/community/profile", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state.savedProfile)
+      body: JSON.stringify(profile)
     });
     if (!response.ok) throw new Error(await parseApiError(response));
     const result = await response.json();
     state.community.status = result.github || result.status || "saved locally";
+    if (result.status === "saved offline") {
+      state.savedProfile = offlineProfile;
+      localStorage.setItem("rigscope.profile", JSON.stringify(state.savedProfile));
+    } else {
+      state.savedProfile = null;
+      localStorage.removeItem("rigscope.profile");
+    }
     await loadCommunity();
   } catch (error) {
-    state.community.status = "не удалось синхронизировать";
+    state.community.status = "sync failed";
     console.error(error);
   }
   renderCommunity();
@@ -867,12 +1405,12 @@ function renderSummary(snapshot) {
   const cards = [
     ["System", inv.system?.manufacturer, inv.system?.model],
     ["Motherboard", inv.board?.manufacturer, inv.board?.product],
-    ["BIOS", inv.bios?.vendor, `${inv.bios?.version || "-"} · ${inv.bios?.releaseDate || "-"}`],
+    ["BIOS", inv.bios?.vendor, `${inv.bios?.version || "-"} · ${formatDate(inv.bios?.releaseDate, "-")}`],
     ["Processor", inv.cpu?.name, `${inv.cpu?.cores || "-"}C / ${inv.cpu?.threads || "-"}T`],
     ["Memory", `${inv.memory?.totalGb || "-"} GB`, `${inv.memory?.modules?.length || 0} modules`],
     ["Graphics", inv.gpu?.name, `${inv.gpu?.vramMb || "-"} MB VRAM`],
     ["Windows", inv.os?.caption, `build ${inv.os?.build || "-"} · ${inv.os?.architecture || "-"}`],
-    ["Boot", inv.os?.bootTime, `uptime ${snapshot.machine?.uptimeHours || 0} h`],
+    ["Boot", formatDateTime(inv.os?.bootTime, "-"), `uptime ${snapshot.machine?.uptimeHours || 0} h`],
     ["Secure Boot", inv.system?.secureBoot === null ? "unknown" : inv.system?.secureBoot ? "enabled" : "disabled", "UEFI firmware state"],
     ["Hypervisor", inv.system?.hypervisorPresent ? "present" : "not reported", "Windows platform"],
     ["Physical Disks", inv.physicalDisks?.length || 0, "detected devices"],
@@ -904,7 +1442,7 @@ function renderLive(snapshot) {
   const powerPct = gpu.powerLimit ? gpu.power / gpu.powerLimit * 100 : 0;
   const netMs = chat.ok ? chat.ms : null;
 
-  $("updatedAt").textContent = `updated ${snapshot.generatedAt || "now"}`;
+  $("updatedAt").textContent = formatUpdatedAt(snapshot.generatedAt);
   $("machineName").textContent = machine.gpu || "Windows machine";
   $("osValue").textContent = `${machine.os || "-"} · build ${machine.build || "-"}`;
   $("cpuValue").textContent = machine.cpu || "-";
@@ -926,9 +1464,12 @@ function renderLive(snapshot) {
   $("netValue").textContent = netMs === null ? "down" : `${netMs} ms`;
   $("cfPill").textContent = cf.ok ? `1.1.1.1 ${cf.ms} ms` : "1.1.1.1 down";
   $("chatPill").textContent = chat.ok ? `chatgpt ${chat.ms} ms` : "chatgpt down";
+  $("netDetails").textContent = snapshot.cache?.mode === "live"
+    ? `live ${formatAge(snapshot.cache.liveAgeMs)} · full ${formatAge(snapshot.cache.fullAgeMs)}`
+    : "full telemetry sample";
 
   const pressure = Math.round((clamp(cpu.loadPct) + clamp(gpu.util) + clamp(memory.usedPct) + clamp(powerPct)) / 4);
-  $("healthText").textContent = pressure < 35 ? "quiet orbit" : pressure < 70 ? "active" : "high burn";
+  $("healthText").textContent = pressure < 35 ? "Low load" : pressure < 70 ? "Active load" : "High load";
   renderRadar(snapshot);
 }
 
@@ -980,7 +1521,7 @@ function renderBoard(inv) {
   kv("biosList", [
     ["Vendor", inv.bios?.vendor],
     ["Version", inv.bios?.version],
-    ["Release date", inv.bios?.releaseDate],
+    ["Release date", formatDate(inv.bios?.releaseDate)],
     ["BIOS serial", inv.bios?.serial],
     ["Secure Boot", inv.system?.secureBoot === null ? "unknown" : inv.system?.secureBoot ? "enabled" : "disabled", inv.system?.secureBoot ? "ok" : "warn"],
     ["Hypervisor", inv.system?.hypervisorPresent ? "present" : "not reported"],
@@ -1012,7 +1553,7 @@ function renderGpu(inv, snapshot) {
         <span>Processor</span><strong>${esc(g.videoProcessor)}</strong>
         <span>Vendor</span><strong>${esc(g.adapterCompatibility)}</strong>
         <span>Driver</span><strong>${esc(g.driverVersion)}</strong>
-        <span>Driver date</span><strong>${esc(g.driverDate)}</strong>
+        <span>Driver date</span><strong>${esc(formatDate(g.driverDate))}</strong>
         <span>Resolution</span><strong>${esc(g.currentResolution)}</strong>
         <span>Refresh</span><strong>${esc(g.currentRefreshRate)} Hz</strong>
       </div>
@@ -1141,8 +1682,8 @@ function renderWindows(inv, snapshot) {
     ["Version / Build", `${inv.os?.version || "-"} / ${inv.os?.build || "-"}`],
     ["Architecture", inv.os?.architecture],
     ["Locale", inv.os?.locale],
-    ["Install date", inv.os?.installDate],
-    ["Last boot", inv.os?.bootTime],
+    ["Install date", formatDate(inv.os?.installDate)],
+    ["Last boot", formatDateTime(inv.os?.bootTime)],
     ["Windows directory", inv.os?.windowsDirectory],
     ["Secure Boot", inv.system?.secureBoot === null ? "unknown" : inv.system?.secureBoot ? "enabled" : "disabled", inv.system?.secureBoot ? "ok" : "warn"],
     ["VBS status", inv.security?.virtualizationBasedSecurityStatus],
@@ -1165,7 +1706,7 @@ function renderWindows(inv, snapshot) {
   rows("hotfixList", (inv.hotfixes || []).map((h) => `
     <div class="table-row tall">
       <strong>${esc(h.id || h.caption)}</strong>
-      <span>${esc(h.description)} · ${esc(h.installedOn)} · ${esc(h.installedBy)}</span>
+      <span>${esc(h.description)} · ${esc(formatDate(h.installedOn, "-"))} · ${esc(h.installedBy)}</span>
     </div>
   `), "No hotfix data");
 }
@@ -1175,7 +1716,7 @@ function renderEvents(events = []) {
     <div class="event-row">
       <div class="event-main">
         <strong>${esc(event.source)}</strong>
-        <span>${esc(event.time)} · ${esc(event.message)}</span>
+        <span>${esc(formatDateTime(event.time, "-"))} · ${esc(event.message)}</span>
       </div>
       <span class="event-id">${esc(event.id)}</span>
     </div>
@@ -1183,6 +1724,7 @@ function renderEvents(events = []) {
 }
 
 function update(snapshot) {
+  document.body.classList.remove("is-loading", "load-failed");
   state.snapshot = snapshot;
   const inv = snapshot.inventory || {};
   renderLive(snapshot);
@@ -1204,16 +1746,50 @@ function update(snapshot) {
 }
 
 async function refresh() {
+  if (state.polling.full) return;
+  state.polling.full = true;
+  const firstLoad = !state.snapshot;
+  if (firstLoad) {
+    document.body.classList.add("is-loading");
+    $("updatedAt").textContent = "Scanning hardware...";
+  }
   try {
     const response = await fetch("/api/snapshot", { cache: "no-store" });
     if (!response.ok) throw new Error(await parseApiError(response));
     update(await response.json());
     $("livePulse").style.background = "var(--green)";
   } catch (error) {
-    $("updatedAt").textContent = "не удалось загрузить телеметрию";
+    document.body.classList.remove("is-loading");
+    document.body.classList.add("load-failed");
+    $("updatedAt").textContent = "Telemetry failed";
     $("livePulse").style.background = "var(--red)";
     console.error(error);
+  } finally {
+    state.polling.full = false;
   }
+}
+
+async function refreshLive() {
+  if (!state.snapshot || state.polling.live) return;
+  state.polling.live = true;
+  try {
+    const response = await fetch("/api/live", { cache: "no-store" });
+    if (!response.ok) throw new Error(await parseApiError(response));
+    update(await response.json());
+    $("livePulse").style.background = "var(--green)";
+  } catch (error) {
+    $("updatedAt").textContent = "Reconnecting telemetry...";
+    $("livePulse").style.background = "var(--red)";
+  } finally {
+    state.polling.live = false;
+  }
+}
+
+function startPolling() {
+  clearInterval(state.polling.liveTimer);
+  clearInterval(state.polling.fullTimer);
+  state.polling.liveTimer = setInterval(refreshLive, state.settings.livePollMs);
+  state.polling.fullTimer = setInterval(refresh, 30000);
 }
 
 async function loadToolkit() {
@@ -1250,9 +1826,13 @@ async function loadCommunity() {
     const response = await fetch("/api/community", { cache: "no-store" });
     if (!response.ok) throw new Error(await parseApiError(response));
     state.community = await response.json();
+    if (state.community?.status === "scoreboard online" && state.savedProfile) {
+      state.savedProfile = null;
+      localStorage.removeItem("rigscope.profile");
+    }
     if (state.snapshot) renderCommunity();
   } catch (error) {
-    state.community = { profiles: [], status: "не удалось загрузить", mode: "local", publishing: "local-only" };
+    state.community = { profiles: [], status: "could not load", mode: "local", publishing: "local-only" };
     if (state.snapshot) renderCommunity();
     console.error(error);
   }
@@ -1266,7 +1846,7 @@ function renderUpdateStatus() {
   const version = update.availableVersion ? ` ${update.availableVersion}` : "";
   const progress = update.progress?.percent !== undefined ? ` ${update.progress.percent}%` : "";
   const labels = {
-    unavailable: "desktop only",
+    unavailable: "Desktop app only",
     idle: `v${update.currentVersion || "-"} · check`,
     checking: "checking...",
     current: `current v${update.currentVersion || "-"}`,
@@ -1275,9 +1855,9 @@ function renderUpdateStatus() {
     downloaded: `ready${version}`,
     installing: "restarting...",
     error: "update failed",
-    unknown: "updates"
+    unknown: "Update status unknown"
   };
-  el.textContent = labels[update.status] || update.status || "updates";
+  el.textContent = labels[update.status] || update.status || "Update status unknown";
   el.title = update.error || "Desktop auto-update status";
   button.disabled = !update.supported || ["checking", "downloading", "installing"].includes(update.status);
   button.title = !update.supported
@@ -1338,11 +1918,11 @@ async function pollNativeRunner() {
 async function startNativeRunner() {
   const profile = selectedNativeProfile();
   if (!profile?.available) {
-    setNativeRunnerLog(["Selected native tool is not installed or not detected."]);
+    setNativeRunnerLog(["Selected external tool is not installed or not detected."]);
     return;
   }
   const acknowledgement = state.nativeRunners?.acknowledgement || "START_NATIVE_STRESS";
-  setNativeRunnerLog([`starting ${profile.label}`, "external stress tools can create high heat and power draw"]);
+  setNativeRunnerLog([`Starting ${profile.label}`, "External stress tools can create high heat and power draw"]);
   try {
     const response = await fetch("/api/native-runners/start", {
       method: "POST",
@@ -1358,7 +1938,7 @@ async function startNativeRunner() {
     renderNativeRunners();
     if (!state.nativeRunnerTimer) state.nativeRunnerTimer = setInterval(pollNativeRunner, 1500);
   } catch (error) {
-    setNativeRunnerLog(["native runner failed", error.message]);
+    setNativeRunnerLog(["External tool launch failed", error.message]);
     console.error(error);
   }
 }
@@ -1370,70 +1950,226 @@ async function stopNativeRunner() {
     state.nativeRunnerStatus = await response.json();
     renderNativeRunners();
   } catch (error) {
-    setNativeRunnerLog(["stop failed", error.message]);
+    setNativeRunnerLog(["Stop failed", error.message]);
     console.error(error);
   }
 }
 
 async function runCpuBench() {
-  await runServerBench("cpu", "/api/bench/cpu", "cpuBenchButton", "cpuBenchResult", "CPU benchmark running");
-}
-
-async function runMemoryBench() {
-  await runServerBench("memory", "/api/bench/memory", "memoryBenchButton", "memoryLabState", "RAM benchmark running");
-}
-
-async function runSensorSweep() {
-  await runServerBench("sensors", "/api/sensors/quick", "sensorBenchButton", "sensorLabState", "Sensor sweep running");
-}
-
-async function runServerBench(type, url, buttonId, statusId, runningText) {
-  const button = $(buttonId);
-  button.disabled = true;
-  button.textContent = "Running...";
-  $(statusId).textContent = runningText;
+  const durationSec = 8;
+  setBenchBusy("cpuBenchButton", true);
+  $("cpuBenchResult").textContent = `CPU load check ${durationSec}s`;
   try {
-    const response = await fetch(url, { method: "POST", cache: "no-store" });
+    const workers = navigator.hardwareConcurrency || 4;
+    const response = await fetch("/api/stress/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({ cpu: true, memory: false, durationSec, workers })
+    });
     if (!response.ok) throw new Error(await parseApiError(response));
-    state.bench[type] = await response.json();
+    const started = await response.json();
+    const startedAt = performance.now();
+    let status = started.status;
+    while (performance.now() - startedAt < durationSec * 1000) {
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      const poll = await fetch("/api/stress/status", { cache: "no-store" });
+      if (poll.ok) status = await poll.json();
+      const cpu = status?.engines?.cpu || {};
+      $("cpuBenchResult").textContent = `${cpu.workers || workers} workers · ${(cpu.ops || 0).toLocaleString("en-US")} ops`;
+      setBar("cpuBenchBar", clamp((performance.now() - startedAt) / (durationSec * 1000) * 100));
+    }
+    const stop = await fetch("/api/stress/stop", { method: "POST", cache: "no-store" });
+    if (stop.ok) status = await stop.json();
+    const cpu = status?.stopped?.cpu || status?.engines?.cpu || {};
+    const elapsedMs = Math.round(performance.now() - startedAt);
+    const ops = Number(cpu.ops || 0);
+    state.bench.cpu = {
+      generatedAt: new Date().toISOString(),
+      elapsedMs,
+      workers: Number(cpu.workers || workers),
+      ops,
+      opsPerSec: Math.round(ops / Math.max(elapsedMs / 1000, 0.1)),
+      avgLoadPct: state.stress.lastSensors?.cpu?.loadPct || null
+    };
+    saveBenchResults();
     if (state.snapshot) {
       renderSuite(state.snapshot);
       renderLab(state.snapshot);
     }
   } catch (error) {
-    $(statusId).textContent = `Не удалось: ${prettyValue(error.message, "ошибка теста")}`;
+    $("cpuBenchResult").textContent = `Failed: ${prettyValue(error.message, "CPU load check error")}`;
+    console.error(error);
+  } finally {
+    setBenchBusy("cpuBenchButton", false);
+  }
+}
+
+async function runMemoryBench() {
+  const durationSec = 8;
+  const targetMb = Number($("stressMemoryTarget")?.value || 4096);
+  setBenchBusy("memoryBenchButton", true);
+  $("memoryLabState").textContent = `RAM load check ${targetMb} MB`;
+  try {
+    const response = await fetch("/api/stress/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({ cpu: false, memory: true, durationSec, targetMb })
+    });
+    if (!response.ok) throw new Error(await parseApiError(response));
+    const started = await response.json();
+    const startedAt = performance.now();
+    let status = started.status;
+    while (performance.now() - startedAt < durationSec * 1000) {
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      const poll = await fetch("/api/stress/status", { cache: "no-store" });
+      if (poll.ok) status = await poll.json();
+      const memory = status?.engines?.memory || {};
+      $("memoryLabState").textContent = `${memory.heldMb || 0}/${memory.targetMb || targetMb} MB · ${memory.cycles || 0} sweeps`;
+      setBar("memoryBenchBar", clamp((memory.heldMb || 0) / Math.max(memory.targetMb || targetMb, 1) * 100));
+    }
+    const stop = await fetch("/api/stress/stop", { method: "POST", cache: "no-store" });
+    if (stop.ok) status = await stop.json();
+    const memory = status?.stopped?.memory || status?.engines?.memory || {};
+    const heldMb = Number(memory.peakHeldMb || memory.lastHeldMb || memory.heldMb || 0);
+    state.bench.memory = {
+      generatedAt: new Date().toISOString(),
+      elapsedMs: Math.round(performance.now() - startedAt),
+      targetMb: Number(memory.targetMb || targetMb),
+      heldMb,
+      cycles: Number(memory.cycles || 0),
+      checksum: Number(memory.checksum || 0),
+      score: Math.round((heldMb / Math.max(Number(memory.targetMb || targetMb), 1)) * 100)
+    };
+    saveBenchResults();
+    if (state.snapshot) {
+      renderSuite(state.snapshot);
+      renderLab(state.snapshot);
+    }
+  } catch (error) {
+    $("memoryLabState").textContent = `Failed: ${prettyValue(error.message, "RAM load check error")}`;
+    console.error(error);
+  } finally {
+    setBenchBusy("memoryBenchButton", false);
+  }
+}
+
+async function runSensorSweep() {
+  await runServerBench("sensors", "/api/sensors/quick", "sensorBenchButton", "sensorLabState", "Sensor check running");
+}
+
+async function runServerBench(type, url, buttonId, statusId, runningText) {
+  const button = $(buttonId);
+  button.disabled = true;
+  button.classList.add("is-busy");
+  setCommandButtonLabel(button, "Running...", "activity");
+  $(statusId).textContent = runningText;
+  try {
+    const response = await fetch(url, { method: "POST", cache: "no-store" });
+    if (!response.ok) throw new Error(await parseApiError(response));
+    state.bench[type] = await response.json();
+    saveBenchResults();
+    if (state.snapshot) {
+      renderSuite(state.snapshot);
+      renderLab(state.snapshot);
+    }
+  } catch (error) {
+    $(statusId).textContent = `Failed: ${prettyValue(error.message, "Test error")}`;
     console.error(error);
   } finally {
     button.disabled = false;
-    button.textContent = type === "cpu" ? "Run CPU Bench" : type === "memory" ? "Run RAM Bench" : "Run Sensors";
+    button.classList.remove("is-busy");
+    setCommandButtonLabel(button, type === "cpu" ? "Run CPU Load" : type === "memory" ? "Run RAM Load" : "Check Sensors", type === "cpu" ? "chip" : type === "memory" ? "database" : "activity");
   }
 }
 
 async function runGpuBench() {
   const button = $("gpuBenchButton");
-  const canvas = $("gpuBenchCanvas");
-  const ctx = canvas.getContext("2d");
-  button.disabled = true;
-  button.textContent = "Running...";
-  $("gpuLabState").textContent = "GPU render running";
+  const canvas = resetCanvasElement("gpuBenchCanvas");
+  setBenchBusy("gpuBenchButton", true);
+  $("gpuLabState").textContent = "WebGL load check running";
   const start = performance.now();
-  const duration = 2500;
+  const duration = 6500;
   let frames = 0;
-  while (performance.now() - start < duration) {
-    const t = performance.now() * 0.002;
-    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, `hsl(${(t * 90) % 360}, 90%, 56%)`);
-    gradient.addColorStop(1, `hsl(${(t * 140 + 160) % 360}, 85%, 48%)`);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (let i = 0; i < 900; i++) {
-      const x = (Math.sin(i * 12.989 + t) * 0.5 + 0.5) * canvas.width;
-      const y = (Math.cos(i * 78.233 + t * 1.3) * 0.5 + 0.5) * canvas.height;
-      ctx.fillStyle = `rgba(${(i * 17) % 255}, ${(i * 31) % 255}, 255, 0.08)`;
-      ctx.fillRect(x, y, 18, 18);
+  let workUnits = 0;
+  const intensity = Number($("stressGpuIntensity")?.value || 2);
+  const passes = intensity >= 3 ? 96 : intensity >= 2 ? 54 : 22;
+  const gl = canvas.getContext("webgl2", { antialias: false, powerPreference: "high-performance" }) ||
+    canvas.getContext("webgl", { antialias: false, powerPreference: "high-performance" });
+
+  if (gl) {
+    const vertexSource = "attribute vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }";
+    const fragmentSource = `
+      precision highp float;
+      uniform vec2 resolution;
+      uniform float time;
+      void main() {
+        vec2 p = (gl_FragCoord.xy * 2.0 - resolution.xy) / min(resolution.x, resolution.y);
+        float v = 0.0;
+        for (int i = 0; i < 96; i++) {
+          float fi = float(i);
+          p = abs(p) / max(dot(p, p), 0.18) - vec2(0.74 + 0.04 * sin(time + fi), 0.58);
+          v += exp(-abs(length(p) - 0.66)) * 0.006;
+        }
+        vec3 color = vec3(v * 2.0 + 0.03, v * 1.1 + 0.12, v * 2.8 + 0.2);
+        gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+      }
+    `;
+    const makeShader = (type, source) => {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
+      return shader;
+    };
+    const program = gl.createProgram();
+    gl.attachShader(program, makeShader(gl.VERTEX_SHADER, vertexSource));
+    gl.attachShader(program, makeShader(gl.FRAGMENT_SHADER, fragmentSource));
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+    const position = gl.getAttribLocation(program, "position");
+    const resolution = gl.getUniformLocation(program, "resolution");
+    const time = gl.getUniformLocation(program, "time");
+    while (performance.now() - start < duration) {
+      resizeCanvasToDisplaySize(canvas, intensity >= 3 ? 1920 : 1440, intensity >= 3 ? 720 : 540);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.useProgram(program);
+      gl.enableVertexAttribArray(position);
+      gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+      gl.uniform2f(resolution, canvas.width, canvas.height);
+      gl.uniform1f(time, performance.now() * 0.001);
+      for (let pass = 0; pass < passes; pass++) gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.flush();
+      frames++;
+      workUnits += passes;
+      $("gpuLabState").textContent = `${workUnits.toLocaleString("en-US")} work · ${frames} frames`;
+      await new Promise(requestAnimationFrame);
     }
-    frames++;
-    await new Promise(requestAnimationFrame);
+  } else {
+    const ctx = canvas.getContext("2d");
+    while (performance.now() - start < duration) {
+      resizeCanvasToDisplaySize(canvas, 960, 360);
+      const t = performance.now() * 0.004;
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, "#061317");
+      gradient.addColorStop(0.5, `hsl(${(t * 50 + 178) % 360}, 74%, 27%)`);
+      gradient.addColorStop(1, "#241015");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (let i = 0; i < 3500; i++) {
+        const x = (Math.sin(i * 12.989 + t) * 0.5 + 0.5) * canvas.width;
+        const y = (Math.cos(i * 78.233 + t * 1.3) * 0.5 + 0.5) * canvas.height;
+        ctx.fillStyle = i % 3 === 0 ? "rgba(255, 118, 78, 0.035)" : "rgba(84, 214, 255, 0.035)";
+        ctx.fillRect(x, y, 18, 18);
+      }
+      frames++;
+      workUnits++;
+      await new Promise(requestAnimationFrame);
+    }
   }
   const elapsedMs = Math.round(performance.now() - start);
   const fps = Math.round(frames / (elapsedMs / 1000));
@@ -1441,25 +2177,63 @@ async function runGpuBench() {
     generatedAt: new Date().toISOString(),
     elapsedMs,
     frames,
+    workUnits,
+    passes,
+    engine: gl ? "webgl" : "canvas-2d",
     fps,
-    score: fps * 100
+    score: workUnits
   };
+  saveBenchResults();
   if (state.snapshot) {
     renderSuite(state.snapshot);
     renderLab(state.snapshot);
   }
-  button.disabled = false;
-  button.textContent = "Run GPU Bench";
+  setBenchBusy("gpuBenchButton", false);
 }
 
 function setView(name) {
-  document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === name));
+  document.body.dataset.view = name;
+  document.querySelectorAll(".tab").forEach((tab) => {
+    const active = tab.dataset.view === name;
+    tab.classList.toggle("active", active);
+    if (active) tab.setAttribute("aria-current", "page");
+    else tab.removeAttribute("aria-current");
+  });
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.dataset.viewPanel === name));
+  const activeTab = document.querySelector(`.tab[data-view="${name}"]`);
+  const label = $("currentSectionLabel");
+  if (label && activeTab) label.textContent = activeTab.textContent.trim();
+  const sectionButton = $("sectionMenuButton");
+  const sectionNav = document.querySelector(".section-nav");
+  if (sectionButton && sectionNav) {
+    sectionButton.setAttribute("aria-expanded", "false");
+    sectionNav.classList.remove("open");
+  }
   if (location.hash.slice(1) !== name) history.replaceState(null, "", `#${name}`);
 }
 
 document.querySelectorAll(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => setView(tab.dataset.view));
+  tab.addEventListener("click", () => {
+    setView(tab.dataset.view);
+    $("sectionMenuButton")?.focus({ preventScroll: true });
+  });
+});
+$("sectionMenuButton").addEventListener("click", () => {
+  const nav = document.querySelector(".section-nav");
+  const expanded = !nav.classList.contains("open");
+  nav.classList.toggle("open", expanded);
+  $("sectionMenuButton").setAttribute("aria-expanded", String(expanded));
+});
+document.addEventListener("click", (event) => {
+  const nav = document.querySelector(".section-nav");
+  if (!nav || nav.contains(event.target)) return;
+  nav.classList.remove("open");
+  $("sectionMenuButton")?.setAttribute("aria-expanded", "false");
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  document.querySelector(".section-nav")?.classList.remove("open");
+  $("sectionMenuButton")?.setAttribute("aria-expanded", "false");
 });
 $("refreshButton").addEventListener("click", refresh);
 $("updateButton").addEventListener("click", updateAction);
@@ -1474,20 +2248,28 @@ $("stressStopButton").addEventListener("click", () => stopStressTest("stopped"))
 $("nativeRunnerStartButton").addEventListener("click", startNativeRunner);
 $("nativeRunnerStopButton").addEventListener("click", stopNativeRunner);
 $("nativeRunnerSelect").addEventListener("change", renderNativeRunners);
-["stressCpuToggle", "stressMemoryToggle", "stressGpuToggle", "stressDuration"].forEach((id) => {
+$("settingsThemeSelect").addEventListener("change", updateSettingFromControls);
+$("settingsPollInterval").addEventListener("change", updateSettingFromControls);
+["stressCpuToggle", "stressMemoryToggle", "stressGpuToggle", "stressDuration", "stressMemoryTarget", "stressGpuIntensity"].forEach((id) => {
   $(id).addEventListener("change", renderStressPanel);
 });
 window.addEventListener("hashchange", () => setView(location.hash.slice(1) || "overview"));
 
+hydrateUiIcons();
+loadSettings();
+applySettings();
+loadBenchResults();
 try {
-  state.savedProfile = JSON.parse(localStorage.getItem("rigscope.profile") || "null");
+  const savedProfile = JSON.parse(localStorage.getItem("rigscope.profile") || "null");
+  state.savedProfile = savedProfile?.schemaVersion === 2 ? savedProfile : null;
 } catch {}
+renderLoadingState();
 refresh();
 loadToolkit();
 loadNativeRunners();
 loadCommunity();
 loadUpdateStatus();
 setView(location.hash.slice(1) || "overview");
-setInterval(refresh, 7000);
+startPolling();
 setInterval(loadCommunity, 60000);
 setInterval(loadUpdateStatus, 5000);

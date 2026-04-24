@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.1.0 - 2026-04-24
+
+### Added
+
+- Added hosted Cloudflare Workers + D1 community scoreboard sync with challenge nonces, rate limiting, server-side profile normalization, and setup lookup endpoints.
+- Added Cloudflare scoreboard deployment files, D1 schema, Wrangler scripts, and release documentation.
+- Added settings for light/dark theme and telemetry polling speed.
+- Added automated syntax/unit test coverage and release-note generation in CI.
+
+### Changed
+
+- Community publishing now stores successful syncs online only; local profile storage is used as an offline fallback instead of duplicating scoreboard entries.
+- Hardware telemetry refreshes faster by default and uses the configured polling speed across the UI.
+- Lab, settings, header status, native runner logs, long device names, and desktop layouts received UI/UX polish.
+- Quick benchmarks, RigScore display, and community comparison use more consistent result formatting.
+
+### Fixed
+
+- Fixed RAM/GPU stress paths not applying real load correctly and improved stress-test visuals/status feedback.
+- Fixed RigScore showing undefined CPU/RAM values after benchmark refactors.
+- Fixed community/profile sync returning local duplicates when the online scoreboard is available.
+- Fixed Cloudflare D1 rate-limit races on simultaneous requests from the same client.
+- Fixed release automation to include tests and generated release notes.
+
 ## 1.0.4 - 2026-04-19
 
 ### Fixed

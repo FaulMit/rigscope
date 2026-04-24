@@ -2,6 +2,57 @@
 
 RigScope can use a real scoreboard service instead of the GitHub gist MVP.
 
+## Recommended Online Backend: Cloudflare Workers + D1
+
+This keeps the community leaderboard online without a VPS. Cloudflare hosts the HTTP API, and D1 stores public setup cards.
+
+1. Install/login to Wrangler:
+
+```powershell
+npx wrangler@latest login
+```
+
+2. Create the D1 database:
+
+```powershell
+npx wrangler@latest d1 create rigscope-scoreboard
+```
+
+3. Copy the config template and paste the `database_id` from the previous command:
+
+```powershell
+copy scoreboard\cloudflare\wrangler.toml.example scoreboard\cloudflare\wrangler.toml
+notepad scoreboard\cloudflare\wrangler.toml
+```
+
+4. Create the database tables:
+
+```powershell
+npm run scoreboard:cf:migrate
+```
+
+5. Deploy the Worker:
+
+```powershell
+npm run scoreboard:cf:deploy
+```
+
+6. Point RigScope at the deployed Worker:
+
+```powershell
+$env:RIGSCOPE_SCOREBOARD_URL="https://rigscope-scoreboard.faulmit.workers.dev"
+npm start
+```
+
+The Cloudflare Worker uses the same API as the local scoreboard server, so the app does not need a separate community-sync mode. RigScope defaults to the hosted `https://rigscope-scoreboard.faulmit.workers.dev` service; `RIGSCOPE_SCOREBOARD_URL` is only needed when testing a different scoreboard.
+
+Optional local Worker test after creating `wrangler.toml`:
+
+```powershell
+npm run scoreboard:cf:migrate:local
+npm run scoreboard:cf:dev
+```
+
 ## Start Locally
 
 ```powershell
@@ -53,3 +104,5 @@ Override:
 ```powershell
 $env:RIGSCOPE_SCOREBOARD_DATA="D:\rigscope-scoreboard"
 ```
+
+The Cloudflare backend schema lives in `scoreboard/cloudflare/schema.sql`. The local JSON backend remains useful for offline testing and development.

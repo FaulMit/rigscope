@@ -5,6 +5,9 @@ const path = require("path");
 const { execFile, spawn } = require("child_process");
 const { detectNativeBridges } = require("./native-bridges");
 const nativeRunners = require("./native-runners");
+const { dedupeProfiles, safeText, sanitizeProfile } = require("./lib/community-profile");
+const { createStaticHandler, readJsonBody, sendDownload, sendJson } = require("./lib/http");
+const { guardLocalWrite } = require("./lib/request-guard");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = "127.0.0.1";
@@ -14,24 +17,28 @@ const PUBLIC = path.join(ROOT, "public");
 const COMMUNITY_DIR = path.join(os.homedir(), ".rigscope");
 const COMMUNITY_FILE = path.join(COMMUNITY_DIR, "community-profiles.json");
 const COMMUNITY_FEED_URL = process.env.RIGSCOPE_COMMUNITY_FEED_URL || process.env.RIGSCOPE_COMMUNITY_RAW_URL || "";
-const SCOREBOARD_URL = (process.env.RIGSCOPE_SCOREBOARD_URL || "").replace(/\/+$/, "");
+const DEFAULT_SCOREBOARD_URL = "https://rigscope-scoreboard.faulmit.workers.dev";
+const SCOREBOARD_URL = (process.env.RIGSCOPE_SCOREBOARD_URL || DEFAULT_SCOREBOARD_URL).replace(/\/+$/, "");
 const GITHUB_GIST_ID = process.env.RIGSCOPE_GITHUB_GIST_ID || "";
 const GITHUB_TOKEN = process.env.RIGSCOPE_GITHUB_TOKEN || "";
 const GIST_FILENAME = process.env.RIGSCOPE_GITHUB_GIST_FILE || "rigscope-community.json";
+const FULL_SNAPSHOT_TTL_MS = 30000;
+const LIVE_SNAPSHOT_TTL_MS = 500;
+const NETWORK_LIVE_TTL_MS = 5000;
 
-const MIME = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml; charset=utf-8"
-};
-
-const SECURITY_HEADERS = {
-  "X-Content-Type-Options": "nosniff",
-  "Referrer-Policy": "no-referrer",
-  "X-Frame-Options": "DENY",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+const snapshotCache = {
+  full: null,
+  fullAt: 0,
+  fullPromise: null,
+  live: null,
+  liveAt: 0,
+  livePromise: null,
+  cpuSample: null,
+  nvidiaSmiPath: null,
+  nvidiaSmiChecked: false,
+  network: null,
+  networkAt: 0,
+  networkPromise: null
 };
 
 function unavailableUpdateStatus() {
@@ -660,8 +667,8 @@ burn();
 `;
 
 const memoryStressChildScript = `
-const targetMb = Math.max(64, Math.min(Number(process.env.RIGSCOPE_MEMORY_MB || 512), 8192));
-const chunkMb = 32;
+const targetMb = Math.max(64, Math.min(Number(process.env.RIGSCOPE_MEMORY_MB || 1024), 12288));
+const chunkMb = 64;
 const blocks = [];
 let running = true;
 let cycles = 0;
@@ -691,11 +698,11 @@ function allocateNext() {
     blocks.push(block);
     cycles++;
     emit();
-    setTimeout(allocateNext, 80);
+    setTimeout(allocateNext, 20);
     return;
   }
   for (const block of blocks) {
-    for (let i = 0; i < block.length; i += 65536) {
+    for (let i = 0; i < block.length; i += 32768) {
       block[i] = (block[i] + 1) & 255;
       checksum = (checksum + block[i]) & 0xffff;
     }
@@ -782,10 +789,231 @@ async function findCommand(name) {
   return out.split(/\r?\n/).find(Boolean) || null;
 }
 
-async function getSnapshot() {
+async function collectSnapshot() {
   if (process.platform !== "win32") return getPortableSnapshot();
   const out = await runPowerShell(psSnapshot, 45000);
   return JSON.parse(out);
+}
+
+function mergeLiveSnapshot(full, live) {
+  if (!full || !live) return full || live;
+  const memory = {
+    ...(full.memory || {}),
+    ...(live.memory || {})
+  };
+  if (Number.isFinite(Number(memory.totalMb)) && Number.isFinite(Number(memory.usedMb))) {
+    memory.freeMb = Math.max(0, Math.round(Number(memory.totalMb) - Number(memory.usedMb)));
+  }
+  return {
+    ...full,
+    generatedAt: live.generatedAt || new Date().toISOString(),
+    cache: {
+      mode: "live",
+      fullGeneratedAt: full.generatedAt || null,
+      liveGeneratedAt: live.generatedAt || null,
+      fullAgeMs: snapshotCache.fullAt ? Date.now() - snapshotCache.fullAt : null,
+      liveAgeMs: snapshotCache.liveAt ? Date.now() - snapshotCache.liveAt : null
+    },
+    cpu: {
+      ...(full.cpu || {}),
+      ...(live.cpu || {})
+    },
+    gpu: live.gpu ? {
+      ...(full.gpu || {}),
+      ...live.gpu
+    } : full.gpu,
+    memory,
+    network: live.network ? {
+      ...(full.network || {}),
+      ...live.network
+    } : full.network
+  };
+}
+
+function readCpuSample() {
+  return os.cpus().map((cpu, index) => {
+    const times = cpu.times || {};
+    const total = Object.values(times).reduce((sum, value) => sum + Number(value || 0), 0);
+    return {
+      index,
+      idle: Number(times.idle || 0),
+      total,
+      speed: Number(cpu.speed || 0)
+    };
+  });
+}
+
+function getCpuLive(fullCpu = {}) {
+  const current = readCpuSample();
+  const previous = snapshotCache.cpuSample;
+  snapshotCache.cpuSample = current;
+  if (!previous || previous.length !== current.length) {
+    return {
+      ...fullCpu,
+      loadPct: Number(fullCpu.loadPct || 0),
+      logical: fullCpu.logical || current.map((cpu) => ({
+        group: 0,
+        thread: cpu.index,
+        loadPct: 0,
+        frequencyMhz: cpu.speed || fullCpu.maxClockMhz || null
+      }))
+    };
+  }
+  const logical = current.map((cpu, index) => {
+    const prev = previous[index] || {};
+    const totalDelta = Math.max(1, cpu.total - Number(prev.total || 0));
+    const idleDelta = Math.max(0, cpu.idle - Number(prev.idle || 0));
+    const loadPct = Math.round(Math.max(0, Math.min(100, (1 - idleDelta / totalDelta) * 100)));
+    const prior = fullCpu.logical?.[index] || {};
+    return {
+      ...prior,
+      group: prior.group || 0,
+      thread: prior.thread ?? index,
+      loadPct,
+      frequencyMhz: cpu.speed || prior.frequencyMhz || fullCpu.maxClockMhz || null
+    };
+  });
+  const loadPct = Math.round(logical.reduce((sum, cpu) => sum + Number(cpu.loadPct || 0), 0) / Math.max(logical.length, 1));
+  return {
+    ...fullCpu,
+    loadPct,
+    logical
+  };
+}
+
+function getMemoryLive(fullMemory = {}) {
+  const totalMb = Math.round(os.totalmem() / 1024 / 1024);
+  const freeMb = Math.round(os.freemem() / 1024 / 1024);
+  const usedMb = Math.max(0, totalMb - freeMb);
+  return {
+    ...fullMemory,
+    totalMb,
+    freeMb,
+    usedMb,
+    usedPct: Math.round((usedMb / Math.max(totalMb, 1)) * 1000) / 10
+  };
+}
+
+async function getNvidiaSmiPath() {
+  if (snapshotCache.nvidiaSmiChecked) return snapshotCache.nvidiaSmiPath;
+  snapshotCache.nvidiaSmiChecked = true;
+  snapshotCache.nvidiaSmiPath = await findCommand("nvidia-smi");
+  return snapshotCache.nvidiaSmiPath;
+}
+
+async function getGpuLive(fullGpu = null) {
+  const smi = await getNvidiaSmiPath();
+  if (!smi) return fullGpu;
+  const raw = await runCommand(smi, ["--query-gpu=name,driver_version,temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw,power.limit,clocks.current.graphics,clocks.current.memory", "--format=csv,noheader,nounits"], 1800);
+  const p = raw.split(/\r?\n/)[0]?.split(",").map((value) => value.trim()) || [];
+  if (p.length < 10) return fullGpu;
+  return {
+    ...(fullGpu || {}),
+    name: p[0],
+    driver: p[1],
+    temp: Number(p[2]),
+    util: Number(p[3]),
+    memUsed: Number(p[4]),
+    memTotal: Number(p[5]),
+    power: Number(p[6]),
+    powerLimit: Number(p[7]),
+    graphicsClock: Number(p[8]),
+    memoryClock: Number(p[9])
+  };
+}
+
+function parsePingMs(output) {
+  const text = String(output || "");
+  const average = text.match(/Average\s*=\s*(\d+)/i);
+  const time = text.match(/time[=<]\s*(\d+)/i);
+  const replyTime = text.match(/=\s*(\d+)\D+TTL/i);
+  const msValues = Array.from(text.matchAll(/(\d+)\s*ms/gi));
+  const value = Number(average?.[1] || time?.[1] || replyTime?.[1] || msValues.at(-1)?.[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+async function pingLive(target) {
+  const windowsPing = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "ping.exe");
+  const command = process.platform === "win32" && fs.existsSync(windowsPing) ? windowsPing : "ping";
+  const args = process.platform === "win32" ? ["-n", "1", "-w", "900", target] : ["-c", "1", "-W", "1", target];
+  const out = await runCommand(command, args, 1500);
+  const ms = parsePingMs(out);
+  return { target, ok: Number.isFinite(ms), ms };
+}
+
+async function getNetworkLive(fullNetwork = null) {
+  const ageMs = snapshotCache.networkAt ? Date.now() - snapshotCache.networkAt : Infinity;
+  if (!snapshotCache.networkPromise && ageMs > NETWORK_LIVE_TTL_MS) {
+    snapshotCache.networkPromise = Promise.all([pingLive("1.1.1.1"), pingLive("chatgpt.com")])
+      .then(([cloudflare, chatgpt]) => {
+        snapshotCache.network = { cloudflare, chatgpt };
+        snapshotCache.networkAt = Date.now();
+        return snapshotCache.network;
+      })
+      .finally(() => {
+        snapshotCache.networkPromise = null;
+      });
+  }
+  if (!snapshotCache.network && snapshotCache.networkPromise) await snapshotCache.networkPromise;
+  return snapshotCache.network || fullNetwork;
+}
+
+async function collectLiveSnapshot() {
+  const full = snapshotCache.full || {};
+  const [gpu, network] = await Promise.all([
+    getGpuLive(full.gpu),
+    getNetworkLive(full.network)
+  ]);
+  return {
+    generatedAt: new Date().toISOString(),
+    score: 100,
+    cpu: getCpuLive(full.cpu),
+    gpu,
+    memory: getMemoryLive(full.memory),
+    network
+  };
+}
+
+function startFullSnapshotRefresh() {
+  if (snapshotCache.fullPromise) return snapshotCache.fullPromise;
+  snapshotCache.fullPromise = collectSnapshot()
+    .then((snapshot) => {
+      snapshotCache.full = { ...snapshot, cache: { mode: "full", fullGeneratedAt: snapshot.generatedAt || null } };
+      snapshotCache.fullAt = Date.now();
+      return snapshotCache.full;
+    })
+    .finally(() => {
+      snapshotCache.fullPromise = null;
+    });
+  return snapshotCache.fullPromise;
+}
+
+async function getSnapshot(options = {}) {
+  const force = Boolean(options.force);
+  const ageMs = snapshotCache.fullAt ? Date.now() - snapshotCache.fullAt : Infinity;
+  if (force || !snapshotCache.full) return startFullSnapshotRefresh();
+  if (ageMs > FULL_SNAPSHOT_TTL_MS) {
+    startFullSnapshotRefresh().catch(console.error);
+  }
+  return mergeLiveSnapshot(snapshotCache.full, snapshotCache.live);
+}
+
+async function getLiveSnapshot() {
+  if (!snapshotCache.full) return getSnapshot();
+  const ageMs = snapshotCache.liveAt ? Date.now() - snapshotCache.liveAt : Infinity;
+  if (!snapshotCache.livePromise && ageMs > LIVE_SNAPSHOT_TTL_MS) {
+    snapshotCache.livePromise = collectLiveSnapshot()
+      .then((live) => {
+        snapshotCache.live = live;
+        snapshotCache.liveAt = Date.now();
+        return live;
+      })
+      .finally(() => {
+        snapshotCache.livePromise = null;
+      });
+  }
+  if (!snapshotCache.live || ageMs > LIVE_SNAPSHOT_TTL_MS) await snapshotCache.livePromise;
+  return mergeLiveSnapshot(snapshotCache.full, snapshotCache.live);
 }
 
 async function getToolkit() {
@@ -1052,6 +1280,7 @@ function runNodeBenchmark(script, timeout) {
 const cpuStress = {
   active: false,
   startedAt: 0,
+  stoppedAt: 0,
   durationMs: 0,
   workers: [],
   ops: 0,
@@ -1064,10 +1293,13 @@ const cpuStress = {
 const memoryStress = {
   active: false,
   startedAt: 0,
+  stoppedAt: 0,
   durationMs: 0,
   targetMb: 0,
   child: null,
   heldMb: 0,
+  lastHeldMb: 0,
+  peakHeldMb: 0,
   cycles: 0,
   checksum: 0,
   timer: null
@@ -1093,6 +1325,7 @@ function stopCpuStress(reason = "stopped") {
     return cpuStressStatus(reason);
   }
   cpuStress.active = false;
+  cpuStress.stoppedAt = Date.now();
   clearTimeout(cpuStress.timer);
   cpuStress.finalOps = Math.max(cpuStress.finalOps, cpuStress.ops);
   const workers = cpuStress.workers.splice(0);
@@ -1111,6 +1344,7 @@ function startCpuStress({ durationSec = 60, workers } = {}) {
   const workerCount = Math.max(1, Math.min(Number(workers) || logical, logical));
   cpuStress.active = true;
   cpuStress.startedAt = Date.now();
+  cpuStress.stoppedAt = 0;
   cpuStress.durationMs = Math.max(10, Math.min(Number(durationSec) || 60, 1800)) * 1000;
   cpuStress.ops = 0;
   cpuStress.finalOps = 0;
@@ -1146,7 +1380,8 @@ function startCpuStress({ durationSec = 60, workers } = {}) {
 }
 
 function cpuStressStatus(reason = "status") {
-  const elapsedMs = cpuStress.startedAt ? Date.now() - cpuStress.startedAt : 0;
+  const endAt = cpuStress.active ? Date.now() : cpuStress.stoppedAt || Date.now();
+  const elapsedMs = cpuStress.startedAt ? endAt - cpuStress.startedAt : 0;
   const rate = Math.max(0, cpuStress.ops - cpuStress.lastOps);
   cpuStress.lastRate = rate;
   cpuStress.lastOps = cpuStress.ops;
@@ -1167,9 +1402,13 @@ function stopMemoryStress(reason = "stopped") {
     return memoryStressStatus(reason);
   }
   memoryStress.active = false;
+  memoryStress.stoppedAt = Date.now();
   clearTimeout(memoryStress.timer);
   const child = memoryStress.child;
   memoryStress.child = null;
+  memoryStress.lastHeldMb = Math.max(memoryStress.lastHeldMb, memoryStress.heldMb);
+  memoryStress.peakHeldMb = Math.max(memoryStress.peakHeldMb, memoryStress.heldMb);
+  memoryStress.heldMb = 0;
   if (child) {
     safeSendChildMessage(child, "stop");
     setTimeout(() => {
@@ -1182,14 +1421,17 @@ function stopMemoryStress(reason = "stopped") {
 function startMemoryStress({ durationSec = 60, targetMb } = {}) {
   stopMemoryStress("restarted");
   const totalMb = Math.round(os.totalmem() / 1024 / 1024);
-  const safeDefault = Math.min(2048, Math.max(256, Math.round(totalMb * 0.08)));
+  const safeDefault = Math.min(4096, Math.max(512, Math.round(totalMb * 0.12)));
   const requested = Number(targetMb) || safeDefault;
-  const capped = Math.max(64, Math.min(requested, Math.round(totalMb * 0.2), 8192));
+  const capped = Math.max(64, Math.min(requested, Math.round(totalMb * 0.35), 12288));
   memoryStress.active = true;
   memoryStress.startedAt = Date.now();
+  memoryStress.stoppedAt = 0;
   memoryStress.durationMs = Math.max(10, Math.min(Number(durationSec) || 60, 1800)) * 1000;
   memoryStress.targetMb = capped;
   memoryStress.heldMb = 0;
+  memoryStress.lastHeldMb = 0;
+  memoryStress.peakHeldMb = 0;
   memoryStress.cycles = 0;
   memoryStress.checksum = 0;
   const child = spawn(process.execPath, ["-e", memoryStressChildScript], {
@@ -1204,16 +1446,26 @@ function startMemoryStress({ durationSec = 60, targetMb } = {}) {
       try {
         const payload = JSON.parse(line);
         memoryStress.heldMb = Number(payload.heldMb || memoryStress.heldMb);
+        memoryStress.lastHeldMb = memoryStress.heldMb;
+        memoryStress.peakHeldMb = Math.max(memoryStress.peakHeldMb, memoryStress.heldMb);
         memoryStress.cycles = Number(payload.cycles || memoryStress.cycles);
         memoryStress.checksum = Number(payload.checksum || memoryStress.checksum);
       } catch {}
     });
   });
   child.on("exit", () => {
+    memoryStress.stoppedAt = memoryStress.stoppedAt || Date.now();
+    memoryStress.lastHeldMb = Math.max(memoryStress.lastHeldMb, memoryStress.heldMb);
+    memoryStress.peakHeldMb = Math.max(memoryStress.peakHeldMb, memoryStress.heldMb);
+    memoryStress.heldMb = 0;
     if (memoryStress.active) memoryStress.active = false;
     if (memoryStress.child === child) memoryStress.child = null;
   });
   child.on("error", () => {
+    memoryStress.stoppedAt = memoryStress.stoppedAt || Date.now();
+    memoryStress.lastHeldMb = Math.max(memoryStress.lastHeldMb, memoryStress.heldMb);
+    memoryStress.peakHeldMb = Math.max(memoryStress.peakHeldMb, memoryStress.heldMb);
+    memoryStress.heldMb = 0;
     if (memoryStress.active) memoryStress.active = false;
     if (memoryStress.child === child) memoryStress.child = null;
   });
@@ -1223,7 +1475,8 @@ function startMemoryStress({ durationSec = 60, targetMb } = {}) {
 }
 
 function memoryStressStatus(reason = "status") {
-  const elapsedMs = memoryStress.startedAt ? Date.now() - memoryStress.startedAt : 0;
+  const endAt = memoryStress.active ? Date.now() : memoryStress.stoppedAt || Date.now();
+  const elapsedMs = memoryStress.startedAt ? endAt - memoryStress.startedAt : 0;
   return {
     active: memoryStress.active,
     reason,
@@ -1231,7 +1484,9 @@ function memoryStressStatus(reason = "status") {
     elapsedMs,
     durationMs: memoryStress.durationMs,
     targetMb: memoryStress.targetMb,
-    heldMb: memoryStress.heldMb,
+    heldMb: memoryStress.active ? memoryStress.heldMb : 0,
+    lastHeldMb: memoryStress.lastHeldMb,
+    peakHeldMb: memoryStress.peakHeldMb,
     cycles: memoryStress.cycles,
     checksum: memoryStress.checksum
   };
@@ -1255,13 +1510,20 @@ async function getSensorSweep() {
 }
 
 function getStressStatus(reason = "status") {
+  const cpu = cpuStressStatus(reason);
+  const memory = memoryStressStatus(reason);
+  const active = cpuStress.active || memoryStress.active;
+  const activeElapsedMs = Math.max(cpu.active ? cpu.elapsedMs || 0 : 0, memory.active ? memory.elapsedMs || 0 : 0);
+  const activeDurationMs = Math.max(cpu.active ? cpu.durationMs || 0 : 0, memory.active ? memory.durationMs || 0 : 0);
   return {
     generatedAt: new Date().toISOString(),
     reason,
-    active: cpuStress.active || memoryStress.active,
+    active,
+    elapsedMs: active ? activeElapsedMs : 0,
+    durationMs: active ? activeDurationMs : 0,
     engines: {
-      cpu: cpuStressStatus(reason),
-      memory: memoryStressStatus(reason),
+      cpu,
+      memory,
       gpu: {
         active: false,
         engine: "browser-webgl",
@@ -1269,56 +1531,6 @@ function getStressStatus(reason = "status") {
       }
     }
   };
-}
-
-function safeText(value, fallback = "-") {
-  if (value === null || value === undefined) return fallback;
-  if (typeof value === "string") return value.slice(0, 180);
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (Array.isArray(value)) return value.map((item) => safeText(item, "")).filter(Boolean).join(", ").slice(0, 180) || fallback;
-  if (typeof value === "object") {
-    return safeText(value.name || value.label || value.caption || value.value || JSON.stringify(value).slice(0, 180), fallback);
-  }
-  return fallback;
-}
-
-function sanitizeProfile(profile = {}) {
-  const score = Math.max(0, Math.min(100000, Math.round(Number(profile.score) || 0)));
-  const bench = profile.bench && typeof profile.bench === "object" ? profile.bench : {};
-  return {
-    id: safeText(profile.id || `setup-${Date.now()}`).replace(/[^a-zA-Z0-9_.:-]/g, "-").slice(0, 80),
-    name: safeText(profile.name || "Unnamed Rig", "Unnamed Rig"),
-    owner: safeText(profile.owner || "anonymous", "anonymous"),
-    score,
-    cpu: safeText(profile.cpu),
-    gpu: safeText(profile.gpu),
-    memory: safeText(profile.memory),
-    storage: safeText(profile.storage),
-    board: safeText(profile.board),
-    os: safeText(profile.os),
-    bench: {
-      cpu: safeText(bench.cpu),
-      memory: safeText(bench.memory),
-      gpu: safeText(bench.gpu),
-      sensors: safeText(bench.sensors)
-    },
-    source: safeText(profile.source || "local"),
-    generatedAt: safeText(profile.generatedAt || new Date().toISOString())
-  };
-}
-
-function dedupeProfiles(profiles) {
-  const seen = new Set();
-  return profiles
-    .map(sanitizeProfile)
-    .filter((profile) => {
-      const key = `${profile.source}:${profile.id}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
-    .slice(0, 200);
 }
 
 async function readLocalCommunity() {
@@ -1396,10 +1608,7 @@ async function readRemoteCommunity() {
 }
 
 async function publishCommunityProfile(profile) {
-  const local = await readLocalCommunity();
-  const publicProfile = sanitizeProfile({ ...profile, source: "local" });
-  const profiles = dedupeProfiles([publicProfile, ...local.filter((item) => item.id !== publicProfile.id)]);
-  await writeLocalCommunity(profiles);
+  const publicProfile = sanitizeProfile({ ...profile, source: "scoreboard" });
 
   if (SCOREBOARD_URL && isAllowedScoreboardUrl(SCOREBOARD_URL) && typeof fetch === "function") {
     try {
@@ -1413,16 +1622,21 @@ async function publishCommunityProfile(profile) {
       });
       if (submitResponse.ok) {
         const submitted = await submitResponse.json();
-        return { profile: submitted.profile || publicProfile, status: "saved locally and published", github: "scoreboard" };
+        return { profile: submitted.profile || publicProfile, status: "published online", github: "scoreboard" };
       }
-      return { profile: publicProfile, status: "saved locally", github: `scoreboard ${submitResponse.status}` };
+      return await saveOfflineCommunityProfile(publicProfile, `scoreboard ${submitResponse.status}`);
     } catch (error) {
-      return { profile: publicProfile, status: "saved locally", github: `scoreboard failed: ${safeText(error.message)}` };
+      return await saveOfflineCommunityProfile(publicProfile, `scoreboard failed: ${safeText(error.message)}`);
     }
   }
 
+  const localProfile = sanitizeProfile({ ...publicProfile, source: "local" });
+  const local = await readLocalCommunity();
+  const profiles = dedupeProfiles([localProfile, ...local.filter((item) => item.id !== localProfile.id)]);
+  await writeLocalCommunity(profiles);
+
   if (!GITHUB_GIST_ID || !GITHUB_TOKEN || typeof fetch !== "function") {
-    return { profile: publicProfile, status: "saved locally", github: "not configured" };
+    return { profile: localProfile, status: "saved offline", github: "not configured" };
   }
 
   const gistProfiles = dedupeProfiles(profiles.map((item) => ({ ...item, source: "github" })));
@@ -1443,19 +1657,28 @@ async function publishCommunityProfile(profile) {
     })
   });
   if (!response.ok) {
-    return { profile: publicProfile, status: "saved locally", github: `gist ${response.status}` };
+    return { profile: localProfile, status: "saved offline", github: `gist ${response.status}` };
   }
-  return { profile: publicProfile, status: "saved locally and published", github: "published" };
+  return { profile: localProfile, status: "saved offline and published", github: "published" };
+}
+
+async function saveOfflineCommunityProfile(profile, reason) {
+  const localProfile = sanitizeProfile({ ...profile, source: "local" });
+  const local = await readLocalCommunity();
+  const profiles = dedupeProfiles([localProfile, ...local.filter((item) => item.id !== localProfile.id)]);
+  await writeLocalCommunity(profiles);
+  return { profile: localProfile, status: "saved offline", github: reason };
 }
 
 async function getCommunity() {
   const [local, scoreboard, remote] = await Promise.all([readLocalCommunity(), readScoreboardCommunity(), readRemoteCommunity()]);
+  const localProfiles = scoreboard.status === "scoreboard online" ? [] : local;
   return {
     generatedAt: new Date().toISOString(),
     mode: SCOREBOARD_URL ? "scoreboard" : COMMUNITY_FEED_URL ? "github-feed" : "local",
     publishing: SCOREBOARD_URL ? "scoreboard" : GITHUB_GIST_ID && GITHUB_TOKEN ? "github-gist" : "local-only",
     status: scoreboard.status !== "not configured" ? scoreboard.status : remote.status,
-    profiles: dedupeProfiles([...local, ...scoreboard.profiles, ...remote.profiles])
+    profiles: dedupeProfiles([...localProfiles, ...scoreboard.profiles, ...remote.profiles])
   };
 }
 
@@ -1511,31 +1734,6 @@ function stopStressSession(reason = "stopped") {
   };
 }
 
-function readJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", (chunk) => {
-      body += chunk;
-      if (body.length > 1024 * 128) {
-        reject(new Error("Request body too large"));
-        req.destroy();
-      }
-    });
-    req.on("end", () => {
-      if (!body) {
-        resolve({});
-        return;
-      }
-      try {
-        resolve(JSON.parse(body));
-      } catch (error) {
-        reject(error);
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
 function openUrl(url, appMode = false) {
   const edge = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
   const chrome = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
@@ -1550,52 +1748,12 @@ function openUrl(url, appMode = false) {
   spawn("cmd.exe", ["/c", "start", "", url], { detached: true, stdio: "ignore" }).unref();
 }
 
-function sendJson(res, status, body) {
-  const payload = JSON.stringify(body);
-  res.writeHead(status, {
-    ...SECURITY_HEADERS,
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store"
-  });
-  res.end(payload);
-}
-
-function sendDownload(res, filename, body) {
-  const payload = JSON.stringify(body, null, 2);
-  res.writeHead(200, {
-    ...SECURITY_HEADERS,
-    "Content-Type": "application/json; charset=utf-8",
-    "Content-Disposition": `attachment; filename="${filename}"`,
-    "Cache-Control": "no-store"
-  });
-  res.end(payload);
-}
-
-function serveStatic(req, res) {
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  const pathname = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
-  const file = path.resolve(PUBLIC, `.${pathname}`);
-
-  if (!file.startsWith(`${PUBLIC}${path.sep}`) && file !== PUBLIC) {
-    res.writeHead(403, SECURITY_HEADERS);
-    res.end("Forbidden");
-    return;
-  }
-
-  fs.readFile(file, (err, data) => {
-    if (err) {
-      res.writeHead(404, SECURITY_HEADERS);
-      res.end("Not found");
-      return;
-    }
-    const type = MIME[path.extname(file)] || "application/octet-stream";
-    res.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": type });
-    res.end(data);
-  });
-}
+const serveStatic = createStaticHandler({ publicDir: PUBLIC, port: PORT });
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
+  if (!guardLocalWrite(req, res, { port: PORT, sendJson })) return;
+
   if (url.pathname === "/api/health") {
     sendJson(res, 200, {
       ok: true,
@@ -1641,6 +1799,14 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/api/snapshot") {
     try {
       sendJson(res, 200, await getSnapshot());
+    } catch (error) {
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+  if (url.pathname === "/api/live") {
+    try {
+      sendJson(res, 200, await getLiveSnapshot());
     } catch (error) {
       sendJson(res, 500, { error: error.message });
     }
@@ -1785,7 +1951,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/export") {
     try {
-      const snapshot = await getSnapshot();
+      const snapshot = await getSnapshot({ force: true });
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       sendDownload(res, `rigscope-report-${stamp}.json`, snapshot);
     } catch (error) {

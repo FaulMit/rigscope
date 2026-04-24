@@ -61,7 +61,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -84,6 +84,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libarchive-tools rpm
+
+      - name: Run tests
+        shell: pwsh
+        run: npm test
 
       - name: Decode Windows signing certificate
         if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE_BASE64 != ''
@@ -140,6 +144,11 @@ jobs:
           BUILD_SCRIPT: ${{ matrix.script }}
           ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
 
+      - name: Generate release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: npm run release:notes -- release-notes.md
+
       - name: Normalize Windows update metadata
         if: runner.os == 'Windows' && matrix.artifact != 'windows-x64'
         shell: pwsh
@@ -164,6 +173,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          body_path: release-notes.md
           files: |
             release/*.exe
             release/*.msi

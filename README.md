@@ -7,11 +7,11 @@
 <h3 align="center">One clean cockpit for your whole PC.</h3>
 
 <p align="center">
-  Hardware inventory, live telemetry, benchmarks, stress tests, native tool bridges, reports, and setup comparisons in one local-first desktop utility.
+  Hardware inventory, live telemetry, benchmarks, stress tests, native tool bridges, reports, setup comparison, and community scoring in one local-first desktop utility.
 </p>
 
 <p align="center">
-  <a href="https://github.com/FaulMit/rigscope/releases/latest"><img alt="Latest release" src="https://img.shields.io/badge/release-v1.0.4-54d6ff?style=for-the-badge"></a>
+  <a href="https://github.com/FaulMit/rigscope/releases/latest"><img alt="Latest release" src="https://img.shields.io/badge/release-v1.1.0-54d6ff?style=for-the-badge"></a>
   <a href="https://github.com/FaulMit/rigscope/actions/workflows/release.yml"><img alt="Release builds" src="https://img.shields.io/badge/builds-passing-8dff9f?style=for-the-badge"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/Windows%20%7C%20Linux%20%7C%20macOS-111?style=for-the-badge">
   <img alt="Local first" src="https://img.shields.io/badge/local--first-127.0.0.1-54d6ff?style=for-the-badge">
@@ -29,44 +29,117 @@
 
 ![RigScope demo](docs/assets/rigscope-demo.gif)
 
-## For Who
+## What Is RigScope?
 
-RigScope is useful when a PC needs a quick, readable, shareable health and performance picture:
+RigScope is a desktop hardware utility for people who normally keep AIDA64, CPU-Z, GPU-Z, OCCT, FurMark, Prime95, MemTest, and notes open at the same time.
+
+It gives you one place to inspect a PC, watch live telemetry, run quick benchmarks, stress CPU/RAM/GPU paths, launch allowlisted native tools, export reports, and compare setup scores.
+
+## For Who
 
 - PC enthusiasts validating a new build, upgrade, undervolt, or overclock.
 - Repair shops and service technicians collecting a clean hardware/stability report.
-- PC builders who want one place for inventory, telemetry, benchmarks, and burn-in checks.
+- PC builders who want inventory, telemetry, benchmarks, and burn-in checks in one workflow.
 - Buyers and sellers who need a transparent setup report before a used-PC deal.
-- Anyone replacing the usual AIDA64 + CPU-Z + GPU-Z + OCCT + FurMark + MemTest stack with one local-first workflow.
+- Anyone who wants a simple public score card without sharing raw inventory.
 
-## Why RigScope
+## Highlights In 1.1.0
 
-RigScope is built for people who normally keep five utilities open at once: AIDA64 for inventory, CPU-Z for CPU details, GPU-Z for graphics, OCCT/FurMark/Prime95/y-cruncher for stress testing, and another tool for reports.
+- Hosted Community scoreboard powered by Cloudflare Workers + D1.
+- Successful Community sync is stored online only; local storage is used as an offline fallback.
+- Faster live telemetry polling with user settings for theme and polling speed.
+- Improved Lab UX, stress-test visuals, loading/status states, and native-runner logs.
+- Fixed RAM/GPU stress behavior, benchmark formatting, RigScore undefined values, and scoreboard race conditions.
+- Release workflow now runs tests and can generate GitHub release notes from the changelog.
 
-RigScope puts that workflow into one modern app:
+## Features
 
-- Full PC passport: OS, board, BIOS/UEFI, CPU, memory modules, GPU, disks, volumes, network adapters, monitors, USB, audio, input devices, drivers, updates, and recent reliability signals.
-- Live telemetry: CPU load, per-logical-thread data, memory pressure, NVIDIA telemetry when `nvidia-smi` is available, network probes, and system events.
-- Lab mode: CPU benchmark, RAM throughput test, browser GPU render benchmark, sensor sweep, built-in stress test, stability score, and report export.
-- Native runners: opt-in bridges for OCCT, FurMark, Prime95/mprime, y-cruncher, HWiNFO, LibreHardwareMonitor, lm-sensors, smartctl, powermetrics, CPU-Z, GPU-Z, MemTest86, and NVIDIA SMI where available.
-- Community setups: local profile save/export, RigScore ranking, head-to-head comparison, and optional GitHub-backed score sync.
-- Local-first privacy: the app server binds to `127.0.0.1`; telemetry stays on your machine unless you explicitly export or sync a reduced public score card.
+### Inventory
 
-## Why Not Separate Tools?
+RigScope collects a readable PC passport:
 
-| Usual workflow | RigScope workflow |
+- OS, uptime, Secure Boot, VBS, hypervisor state
+- motherboard, BIOS/UEFI, CPU topology, caches, virtualization
+- DIMM slots, speed, configured speed, manufacturer, part numbers
+- GPU adapter, driver, VRAM, clocks, power, temperature, utilization
+- physical disks, volumes, file systems, health, firmware, bus/interface
+- network adapters, masked MACs, IPs, gateways, DNS
+- monitors, audio devices, USB, input devices, drivers, updates, and reliability signals
+
+### Live Telemetry
+
+- CPU load and per-thread pressure
+- memory usage and pressure
+- NVIDIA telemetry through `nvidia-smi` when available
+- network latency probes
+- system event/status summaries
+- configurable polling speed, defaulting to fast desktop-friendly updates
+
+### Lab
+
+RigScope Lab includes:
+
+- CPU quick benchmark
+- memory throughput benchmark
+- GPU render benchmark
+- sensor sweep
+- built-in CPU worker stress
+- bounded RAM allocator stress
+- browser/Electron WebGL GPU stress loop
+- native external runner launcher
+- RigScore and stability summary
+- JSON report export
+
+Stress tests never auto-start. They require an explicit click, show visible status/loading, and keep a stop control active during the run.
+
+### Native Bridges
+
+RigScope can discover installed tools and expose safe launch/status hooks:
+
+| Tool family | Examples |
 | --- | --- |
-| AIDA64 for inventory | One PC passport with OS, board, BIOS, CPU, RAM, GPU, disks, network, devices, drivers, and reliability signals |
-| CPU-Z / GPU-Z for quick component checks | CPU, memory, GPU, and sensor views in the same dashboard |
-| OCCT / FurMark / Prime95 / y-cruncher for stress work | Built-in stress controls plus opt-in native runner profiles with duration caps |
-| Separate benchmark notes or screenshots | Lab reports, RigScore, JSON export, and setup comparison |
-| Manual copy/paste when sharing a setup | Reduced public score card designed for community sharing |
+| CPU / memory stress | Prime95/mprime, y-cruncher |
+| GPU stress | FurMark |
+| Stability suite | OCCT |
+| Sensors | HWiNFO, LibreHardwareMonitor, lm-sensors, powermetrics, NVIDIA SMI |
+| Storage | smartctl, CrystalDiskInfo |
+| Reference utilities | CPU-Z, GPU-Z, MemTest86 |
 
-![RigScope lab](docs/assets/rigscope-lab.png)
+Native runners are opt-in and allowlisted. RigScope does not accept arbitrary executable paths from the browser UI.
+
+### Community Scoreboard
+
+Community sync uses the hosted RigScope scoreboard by default:
+
+```text
+https://rigscope-scoreboard.faulmit.workers.dev
+```
+
+`Save / Sync Profile` publishes only a reduced public score card:
+
+- setup name and owner label
+- RigScore
+- CPU/GPU/RAM/storage summary
+- OS and board
+- benchmark numbers
+
+The scoreboard backend adds challenge nonces, rate limiting, server-side profile normalization, score bounds, and setup lookup endpoints. Local storage is now only a fallback when online publishing fails.
+
+For local scoreboard development:
+
+```powershell
+npm run scoreboard
+$env:RIGSCOPE_SCOREBOARD_URL="http://127.0.0.1:8797"
+npm start
+```
+
+Cloudflare deployment docs: [docs/SCOREBOARD.md](docs/SCOREBOARD.md).
 
 ## Install
 
-The easiest way is to grab a packaged release:
+Download the latest packaged release:
+
+[github.com/FaulMit/rigscope/releases/latest](https://github.com/FaulMit/rigscope/releases/latest)
 
 | Platform | Package |
 | --- | --- |
@@ -74,11 +147,9 @@ The easiest way is to grab a packaged release:
 | Linux x64 / ARM64 | `.AppImage`, `.deb`, or `.tar.gz` |
 | macOS Apple Silicon + Intel | Universal `.dmg` or `.zip` |
 
-Download: [github.com/FaulMit/rigscope/releases/latest](https://github.com/FaulMit/rigscope/releases/latest)
+Packaged builds include auto-update support through GitHub Releases. Use the update button in the top bar to check, download, and restart into a newer release.
 
-RigScope checks for desktop updates from GitHub Releases in packaged builds. Use the update button in the top bar to check, download, and restart into a newer release. Browser/dev mode shows update status as desktop-only.
-
-> Public 1.0 builds are usable, but unsigned unless Windows/macOS signing secrets are configured in CI. Windows SmartScreen and macOS Gatekeeper may warn on unsigned builds.
+> Public builds are usable, but unsigned unless Windows/macOS signing secrets are configured in CI. Windows SmartScreen and macOS Gatekeeper may warn on unsigned builds.
 
 ## Quick Start
 
@@ -108,109 +179,32 @@ npm run pack
 npm run dist:win
 ```
 
-Linux/macOS package scripts:
-
-```bash
-npm run dist:linux
-npm run dist:mac
-```
-
-## Features
-
-### Inventory
-
-RigScope reads the boring parts so you do not have to hunt through five system dialogs:
-
-- system, OS, uptime, Secure Boot, VBS, hypervisor state
-- motherboard, BIOS/UEFI, CPU topology, caches, virtualization
-- DIMM slots, speed, configured speed, manufacturer, part numbers
-- GPU adapter, driver, VRAM, clocks, power, temperature, utilization
-- physical disks, volumes, file systems, health, firmware, bus/interface
-- network adapters, MAC masking, IPs, gateways, DNS
-- monitors, audio devices, USB controllers/hubs, keyboards, pointing devices
-- PnP device inventory, running system drivers, recent hotfixes
-
-### Lab
-
-RigScope Lab is the performance and stability area:
-
-- CPU quick benchmark
-- memory throughput benchmark
-- GPU render benchmark
-- sensor sweep
-- built-in CPU worker stress
-- bounded RAM allocator stress
-- browser WebGL GPU stress loop
-- native external runner launcher
-- RigScore and stability summary
-- JSON report export
-
-Stress tests never auto-start. They require an explicit click, show live status, and keep a visible stop control active during the run.
-
-### Native Bridges
-
-RigScope can discover installed tools and expose safe launch/status hooks:
-
-| Tool family | Examples |
-| --- | --- |
-| CPU / memory stress | Prime95/mprime, y-cruncher |
-| GPU stress | FurMark |
-| Stability suite | OCCT |
-| Sensors | HWiNFO, LibreHardwareMonitor, lm-sensors, powermetrics, NVIDIA SMI |
-| Storage | smartctl, CrystalDiskInfo |
-| Reference utilities | CPU-Z, GPU-Z, MemTest86 |
-
-Native runners are opt-in and allowlisted. RigScope does not accept arbitrary executable paths from the browser UI.
-
-### Community Score Sync
-
-Community works offline by default. `Save / Sync Profile` stores only a reduced public score card:
-
-- setup name and owner label
-- RigScore
-- CPU/GPU/RAM/storage summary
-- OS and board
-- benchmark numbers
-
-Optional GitHub-backed sync can be enabled on the local backend:
+## Development
 
 ```powershell
-$env:RIGSCOPE_COMMUNITY_FEED_URL="https://gist.githubusercontent.com/<user>/<gist>/raw/rigscope-community.json"
-$env:RIGSCOPE_GITHUB_GIST_ID="<gist-id>"
-$env:RIGSCOPE_GITHUB_TOKEN="<fine-grained-token>"
-npm start
+npm start                     # local server only
+npm run open                  # server + default browser
+npm run app                   # browser app mode
+npm run desktop               # Electron shell
+npm run scoreboard            # local JSON leaderboard backend
+npm run scoreboard:cf:dev     # Cloudflare Worker dev server
+npm run scoreboard:cf:migrate # apply D1 schema remotely
+npm test                      # syntax and unit tests
+npm run verify                # preflight checks
+npm run pack                  # unpacked desktop build
 ```
 
-Tokens stay on the backend. The browser UI never asks for or stores a GitHub token.
-
-For a proper leaderboard service, run the bundled scoreboard backend:
-
-```powershell
-npm run scoreboard
-$env:RIGSCOPE_SCOREBOARD_URL="http://127.0.0.1:8797"
-npm start
-```
-
-The scoreboard backend adds challenge nonces, rate limiting, server-side profile normalization, score bounds, and setup lookup endpoints. See [docs/SCOREBOARD.md](docs/SCOREBOARD.md).
-
-## Services Built Around RigScope
-
-RigScope is open-source software, but it also fits practical paid workflows:
-
-- remote PC diagnostics with a structured hardware and stability report
-- post-build or post-upgrade validation for new systems
-- overclock/undervolt sanity checks with exported benchmark evidence
-- used-PC seller/buyer reports before a listing or purchase
-- repeatable burn-in reports for small PC builders and repair shops
+Release docs: [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Security Model
 
-- Local server binds to `127.0.0.1`.
+- Local app server binds to `127.0.0.1`.
 - Static files are served only from `public/`.
 - CSP, frame denial, `nosniff`, and referrer protections are enabled.
 - Exported reports are user-triggered.
 - Native stress tools require explicit acknowledgement.
 - Community publishing sends only the reduced public profile, not raw inventory.
+- Cloudflare scoreboard stores an IP hash for anti-abuse, not the raw IP.
 
 See [security_best_practices_report.md](security_best_practices_report.md) for the latest review.
 
@@ -227,50 +221,23 @@ See [security_best_practices_report.md](security_best_practices_report.md) for t
 
 Windows currently has the deepest inventory. Linux and macOS open cleanly through the portable compatibility layer and can be deepened with platform bridges over time.
 
-## Release Builds
-
-GitHub Actions builds:
-
-- Windows x64, x86, ARM64
-- Linux x64, ARM64
-- macOS Universal
-
-Release docs: [docs/RELEASE.md](docs/RELEASE.md)
-
-## 1.0 Release Status
-
-RigScope 1.0 is the first public-ready desktop release line:
-
-- packaged installers and portable builds for Windows, Linux, and macOS
-- local hardware inventory, telemetry, lab tests, reports, and setup comparison
-- packaged-app updater backed by GitHub Releases
-- opt-in native runner profiles with duration caps and explicit acknowledgement
-- local-first privacy and a reduced public profile for community sync
-
-Production code signing is supported by the workflow but depends on repository secrets. Without those secrets, the generated files are functional but unsigned.
-
-## Development
-
-```powershell
-npm start          # local server only
-npm run open       # server + default browser
-npm run app        # browser app mode
-npm run desktop    # Electron shell
-npm run scoreboard # local leaderboard backend
-npm run pack       # unpacked desktop build
-```
-
-The app is intentionally dependency-light: Node.js server, static browser UI, Electron packaging, and native OS/tool bridges.
-
 ## Troubleshooting
 
 | Symptom | What to check |
 | --- | --- |
-| `Port 8787 is already in use` | RigScope now reuses an existing RigScope instance. If another app owns the port, close it or start RigScope with another `PORT`. |
+| `Port 8787 is already in use` | RigScope reuses an existing RigScope instance. If another app owns the port, close it or start RigScope with another `PORT`. |
 | No GPU telemetry | Install/update the GPU driver and check whether `nvidia-smi` is available in PATH. |
 | Native runner is disabled | Install the external tool first. RigScope only enables detected allowlisted runners. |
+| Community sync says `scoreboard failed` | Check internet access and the hosted scoreboard URL. RigScope keeps an offline fallback profile when publishing fails. |
 | Windows/macOS warns on launch | Preview builds are unsigned. Production signing is planned. |
-| Community sync says `not configured` | That is normal offline mode. Configure the GitHub env vars only if you want remote leaderboard sync. |
+
+## Roadmap
+
+- stronger benchmark attestation and anomaly scoring for the public leaderboard
+- deeper native profiles for OCCT/FurMark/Prime95/y-cruncher
+- more Linux/macOS sensor bridges
+- production code signing for Windows/macOS
+- more visual polish backed by screenshot QA on desktop resolutions
 
 ## Contributing
 
@@ -285,59 +252,28 @@ Good contributions are practical and testable:
 Before opening a PR, run:
 
 ```powershell
-node --check server.js
-node --check native-runners.js
-node --check electron/main.js
-node --check public/app.js
+npm test
+npm run verify
 npm run pack
 ```
 
-## License
+## Русская версия
 
-MIT. See [LICENSE](LICENSE).
+RigScope - это локальная desktop-утилита для железа, диагностики, live telemetry, бенчмарков, стресс-тестов, отчетов и сравнения сетапов.
 
----
+Идея простая: вместо AIDA64 + CPU-Z + GPU-Z + OCCT + FurMark + Prime95 + MemTest в разных окнах дать один аккуратный инструмент для проверки ПК.
 
-# Русская версия
+Что умеет версия 1.1.0:
 
-<h3 align="center">Один красивый центр управления для всего ПК.</h3>
+- показывает подробный паспорт ПК: ОС, плату, BIOS/UEFI, CPU, RAM, GPU, диски, сеть, устройства, драйверы и обновления;
+- обновляет telemetry быстрее и дает настройки темы и скорости опроса;
+- запускает CPU/RAM/GPU quick tests, sensor sweep и встроенные stress tests;
+- умеет работать с внешними инструментами вроде OCCT, FurMark, Prime95/mprime, y-cruncher, HWiNFO и NVIDIA SMI, если они установлены;
+- синхронизирует Community-профили через общий Cloudflare scoreboard;
+- сохраняет локальный профиль только как offline fallback, если онлайн-синхронизация недоступна;
+- экспортирует отчеты и публичный сокращенный setup profile без сырого inventory.
 
-RigScope - это локальная утилита для железа, диагностики, бенчмарков, стресс-тестов, отчётов и сравнения сетапов. Идея простая: вместо AIDA64 + CPU-Z + GPU-Z + OCCT + FurMark + Prime95 + MemTest в разных окнах сделать один удобный и современный инструмент.
-
-## Для кого
-
-- Энтузиасты ПК после апгрейда, андервольта или разгона.
-- Сервисники и мастера, которым нужен аккуратный отчёт по железу и стабильности.
-- Сборщики ПК, проверяющие систему перед отдачей клиенту.
-- Покупатели и продавцы б/у ПК, которым нужен понятный setup report.
-- Люди, которым надоело держать отдельно AIDA64, CPU-Z, GPU-Z, OCCT, FurMark и MemTest.
-
-## Что умеет
-
-- Общая информация о компьютере: Windows/Linux/macOS, материнка, BIOS/UEFI, CPU, RAM, GPU, диски, сеть, USB, мониторы, звук, драйверы, обновления.
-- Живая телеметрия: загрузка CPU, потоки CPU, память, GPU через `nvidia-smi`, сеть, системные события.
-- Лаборатория: CPU bench, RAM bench, GPU render bench, sensor sweep, стресс CPU/RAM/GPU, итоговый RigScore.
-- Нативные мосты: обнаружение и запуск профилей для OCCT, FurMark, Prime95/mprime, y-cruncher и других инструментов, если они установлены.
-- Community-вкладка: сохранить профиль, экспортировать сетап, сравнить RigScore с другими, подключить GitHub leaderboard.
-- Приватность: по умолчанию всё локально, сервер слушает только `127.0.0.1`.
-
-## Установка
-
-Самый простой вариант - скачать готовый релиз:
-
-[Скачать последнюю версию](https://github.com/FaulMit/rigscope/releases/latest)
-
-Что есть в релизах:
-
-- Windows: установщик `.exe` и portable `.exe` для x64, x86, ARM64
-- Linux: `.AppImage`, `.deb`, `.tar.gz` для x64 и ARM64
-- macOS: universal `.dmg` и `.zip`
-
-> Сейчас preview-сборки ещё без production-подписи. Windows/macOS могут показывать предупреждение безопасности.
-
-В packaged desktop-версии есть автообновление через GitHub Releases: кнопка обновления сверху проверяет новую версию, скачивает её и перезапускает приложение после установки. В браузерном/dev-режиме обновление честно показывается как `desktop only`.
-
-## Быстрый запуск из исходников
+Быстрый запуск из исходников:
 
 ```powershell
 git clone https://github.com/FaulMit/rigscope.git
@@ -352,62 +288,27 @@ npm start
 http://127.0.0.1:8787
 ```
 
-Запуск как desktop-приложение:
+Desktop-режим:
 
 ```powershell
 npm run desktop
 ```
 
-## Почему это удобно
+Проверки перед изменениями:
 
-RigScope не пытается быть просто ещё одной таблицей с железом. Он собирает нормальный сценарий использования:
+```powershell
+npm test
+npm run verify
+```
 
-1. Посмотреть, что стоит в компьютере.
-2. Проверить датчики и состояние системы.
-3. Прогнать CPU/RAM/GPU тесты.
-4. Получить общий RigScore.
-5. Сохранить или экспортировать профиль.
-6. Сравнить сетап с другими.
+Безопасность:
 
-## Что можно продавать вокруг RigScope
+- стресс-тесты не запускаются сами;
+- нативные инструменты требуют явного подтверждения;
+- локальный сервер слушает только `127.0.0.1`;
+- Community отправляет только сокращенный публичный профиль;
+- GitHub/Cloudflare секреты не хранятся в браузерном UI.
 
-- удалённая диагностика ПК
-- отчёт по железу и стабильности
-- проверка системы после сборки или апгрейда
-- benchmark/stability report для продавцов и покупателей ПК
-- регулярная проверка парка рабочих или игровых машин
+## License
 
-## Безопасность
-
-- Стресс-тесты не запускаются сами.
-- Нативные инструменты запускаются только после явного подтверждения.
-- GitHub sync не хранит токен в браузере.
-- Публичный профиль не содержит полный сырой inventory.
-- Сервер работает локально на `127.0.0.1`.
-
-Подробный отчёт: [security_best_practices_report.md](security_best_practices_report.md)
-
-## Статус проекта
-
-RigScope 1.0 - первая публичная стабильная ветка: приложение собирается под Windows, Linux и macOS, умеет локальный inventory, live telemetry, lab-тесты, отчёты, сравнение сетапов, native runner profiles и обновление из packaged desktop-сборки.
-
-Что ещё важно для совсем взрослого production:
-
-- production code signing для Windows/macOS
-- нормальный backend для рейтингов и защиты от накрутки
-- более глубокие профили OCCT/FurMark/Prime95/y-cruncher
-- больше sensor bridges под Linux/macOS
-
-## Помощь проекту
-
-Лучшее, что можно принести в проект:
-
-- баг-репорты со скриншотами и шагами воспроизведения
-- новые bridge-интеграции для датчиков и железа
-- безопасные stress-test профили
-- улучшения UI, проверенные на реальных разрешениях
-- помощь с production signing и релизной автоматизацией
-
-## Лицензия
-
-MIT. См. [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

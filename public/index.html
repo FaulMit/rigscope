@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,35 +11,42 @@
   <main class="shell">
     <header class="topbar">
       <div>
-        <p class="eyebrow">local hardware intelligence</p>
+        <p class="eyebrow">local PC diagnostics</p>
         <h1>RigScope</h1>
       </div>
       <div class="actions">
-        <button id="refreshButton" class="icon-button" title="Refresh now">↻</button>
-        <button id="updateButton" class="icon-button" title="Check for updates">⇧</button>
-        <a class="icon-button" href="/api/export" title="Export JSON report">⇩</a>
+        <button id="refreshButton" class="icon-button" title="Refresh now" aria-label="Refresh now">↻</button>
+        <button id="updateButton" class="icon-button" title="Check for updates" aria-label="Check for updates">⇧</button>
+        <a class="icon-button" href="/api/export" title="Export JSON report" aria-label="Export JSON report">⇩</a>
         <div class="status-strip">
           <span class="pulse" id="livePulse"></span>
-          <span id="updatedAt">connecting</span>
-          <span id="updateStatus" class="update-status">updates idle</span>
+          <span id="updatedAt">Connecting...</span>
+          <span id="updateStatus" class="update-status">Update check idle</span>
         </div>
       </div>
     </header>
 
-    <nav class="tabs" aria-label="RigScope sections">
-      <button class="tab active" data-view="overview">Overview</button>
-      <button class="tab" data-view="suite">Suite</button>
-      <button class="tab" data-view="cpu">CPU</button>
-      <button class="tab" data-view="board">Board</button>
-      <button class="tab" data-view="memory">Memory</button>
-      <button class="tab" data-view="gpu">GPU</button>
-      <button class="tab" data-view="storage">Storage</button>
-      <button class="tab" data-view="network">Network</button>
-      <button class="tab" data-view="devices">Devices</button>
-      <button class="tab" data-view="lab">Lab</button>
-      <button class="tab" data-view="community">Community</button>
-      <button class="tab" data-view="windows">Platform</button>
-    </nav>
+    <div class="section-nav">
+      <button id="sectionMenuButton" class="section-menu-button" type="button" aria-expanded="false" aria-controls="sectionMenu">
+        <span class="menu-glyph">☰</span>
+        <span id="currentSectionLabel">Overview</span>
+      </button>
+      <nav id="sectionMenu" class="tabs" aria-label="RigScope sections">
+        <button class="tab active" data-view="overview">Overview</button>
+        <button class="tab" data-view="suite">Suite</button>
+        <button class="tab" data-view="cpu">CPU</button>
+        <button class="tab" data-view="board">Board</button>
+        <button class="tab" data-view="memory">Memory</button>
+        <button class="tab" data-view="gpu">GPU</button>
+        <button class="tab" data-view="storage">Storage</button>
+        <button class="tab" data-view="network">Network</button>
+        <button class="tab" data-view="devices">Devices</button>
+        <button class="tab" data-view="lab">Lab</button>
+        <button class="tab" data-view="community">Community</button>
+        <button class="tab" data-view="windows">Platform</button>
+        <button class="tab" data-view="settings">Settings</button>
+      </nav>
+    </div>
 
     <section class="hero-grid">
       <article class="panel system-panel">
@@ -61,8 +68,8 @@
       <article class="panel gauge-panel">
         <canvas id="radarCanvas" width="420" height="260" aria-label="System radar"></canvas>
         <div class="radar-caption">
-          <span>live pressure map</span>
-          <strong id="healthText">warming up</strong>
+          <span>Live system load</span>
+          <strong id="healthText">Collecting data</strong>
         </div>
       </article>
     </section>
@@ -89,13 +96,13 @@
           <span id="cfPill">1.1.1.1</span>
           <span id="chatPill">chatgpt</span>
         </div>
-        <p id="netDetails">single-probe latency</p>
+        <p id="netDetails">Network latency</p>
       </article>
     </section>
 
     <section class="view active" data-view-panel="overview">
       <article class="panel">
-        <div class="panel-head compact"><span class="icon">◎</span><div><p class="label">complete summary</p><h2>Computer Passport</h2></div></div>
+        <div class="panel-head compact"><span class="icon">◎</span><div><p class="label">complete summary</p><h2>PC Summary</h2></div></div>
         <div id="summaryGrid" class="summary-grid"></div>
       </article>
       <div class="two-col">
@@ -175,28 +182,28 @@
         <div class="panel-head compact"><span class="icon">⚡</span><div><p class="label">benchmark lab</p><h2>Quick Tests</h2></div></div>
         <div class="lab-grid">
           <div class="lab-card">
-            <div class="lab-title"><strong>CPU Quick Bench</strong><span>safe</span></div>
+            <div class="lab-title"><strong>CPU Load Check</strong><span>safe</span></div>
             <div class="lab-meter"><i id="cpuBenchBar"></i></div>
             <p id="cpuBenchResult">Ready</p>
-            <button id="cpuBenchButton" class="command-button">Run CPU Bench</button>
+            <button id="cpuBenchButton" class="command-button">Run CPU Load</button>
           </div>
           <div class="lab-card">
-            <div class="lab-title"><strong>Memory Throughput</strong><span>safe</span></div>
+            <div class="lab-title"><strong>RAM Load Check</strong><span>safe</span></div>
             <div class="lab-meter"><i id="memoryBenchBar"></i></div>
             <p id="memoryLabState">Ready</p>
-            <button id="memoryBenchButton" class="command-button">Run RAM Bench</button>
+            <button id="memoryBenchButton" class="command-button">Run RAM Load</button>
           </div>
           <div class="lab-card">
-            <div class="lab-title"><strong>GPU Render</strong><span>safe</span></div>
+            <div class="lab-title"><strong>GPU Render Check</strong><span>safe</span></div>
             <canvas id="gpuBenchCanvas" width="240" height="96" aria-label="GPU quick render"></canvas>
             <p id="gpuLabState">Ready</p>
-            <button id="gpuBenchButton" class="command-button">Run GPU Bench</button>
+            <button id="gpuBenchButton" class="command-button">Run GPU Render</button>
           </div>
           <div class="lab-card">
-            <div class="lab-title"><strong>Sensor Sweep</strong><span>safe</span></div>
+            <div class="lab-title"><strong>Sensor Check</strong><span>safe</span></div>
             <div class="lab-meter"><i id="sensorBenchBar"></i></div>
             <p id="sensorLabState">Sensor bridge</p>
-            <button id="sensorBenchButton" class="command-button">Run Sensors</button>
+            <button id="sensorBenchButton" class="command-button">Check Sensors</button>
           </div>
         </div>
       </article>
@@ -204,10 +211,12 @@
         <div class="panel-head compact"><span class="icon">🔥</span><div><p class="label">stability lab</p><h2>Stress Test</h2></div></div>
         <div class="stress-board">
           <div class="stress-controls">
-            <label class="toggle-card"><input id="stressCpuToggle" type="checkbox" checked><span>CPU Workers</span><strong id="stressCpuState">armed</strong></label>
-            <label class="toggle-card"><input id="stressMemoryToggle" type="checkbox" checked><span>RAM Allocator</span><strong id="stressMemoryState">armed</strong></label>
-            <label class="toggle-card"><input id="stressGpuToggle" type="checkbox" checked><span>GPU Render Loop</span><strong id="stressGpuState">armed</strong></label>
-            <label class="stress-select"><span>Duration</span><select id="stressDuration"><option value="30">30 sec smoke</option><option value="60" selected>60 sec balanced</option><option value="180">3 min stability</option><option value="300">5 min extended</option></select></label>
+            <label class="toggle-card"><input id="stressCpuToggle" type="checkbox" checked><span>CPU Workers</span><strong id="stressCpuState">Ready</strong></label>
+            <label class="toggle-card"><input id="stressMemoryToggle" type="checkbox" checked><span>RAM Allocator</span><strong id="stressMemoryState">Ready</strong></label>
+            <label class="toggle-card"><input id="stressGpuToggle" type="checkbox" checked><span>GPU Render Loop</span><strong id="stressGpuState">Ready</strong></label>
+            <label class="stress-select"><span>Duration</span><select id="stressDuration"><option value="30">30 sec quick</option><option value="60" selected>60 sec normal</option><option value="180">3 min stable</option><option value="300">5 min extended</option></select></label>
+            <label class="stress-select"><span>RAM target</span><select id="stressMemoryTarget"><option value="1024">1 GB</option><option value="2048">2 GB</option><option value="4096" selected>4 GB</option><option value="8192">8 GB</option></select></label>
+            <label class="stress-select"><span>GPU intensity</span><select id="stressGpuIntensity"><option value="1">light</option><option value="2" selected>heavy</option><option value="3">extreme</option></select></label>
             <div class="stress-actions">
               <button id="stressStartButton" class="command-button danger">Start Stress</button>
               <button id="stressStopButton" class="command-button ghost" disabled>Stop</button>
@@ -217,9 +226,9 @@
             <div class="stress-ring"><strong id="stressProgressValue">0%</strong><span id="stressModeLabel">idle</span></div>
           <div class="stress-bars">
               <div><span>Elapsed</span><strong id="stressElapsed">0s</strong></div>
-              <div><span>CPU ops</span><strong id="stressCpuOps">-</strong></div>
+            <div><span>CPU work</span><strong id="stressCpuOps">-</strong></div>
               <div><span>Memory held</span><strong id="stressMemoryHeld">0 MB</strong></div>
-              <div><span>GPU frames</span><strong id="stressGpuFrames">-</strong></div>
+              <div><span>GPU work units</span><strong id="stressGpuFrames">-</strong></div>
             </div>
           </div>
         </div>
@@ -228,18 +237,18 @@
         <div id="stressLog" class="stress-log"><span>Ready. Stress runs only after explicit start.</span></div>
       </article>
       <article class="panel">
-        <div class="panel-head compact"><span class="icon">▣</span><div><p class="label">native tools</p><h2>External Stress Runners</h2></div></div>
+        <div class="panel-head compact"><span class="icon">▣</span><div><p class="label">external tools</p><h2>Stress Tool Launchers</h2></div></div>
         <div class="stress-board native-runner-board">
           <div class="stress-controls">
             <label class="stress-select"><span>Profile</span><select id="nativeRunnerSelect"></select></label>
-            <label class="stress-select"><span>Duration</span><select id="nativeRunnerDuration"><option value="60">60 sec smoke</option><option value="180">3 min check</option><option value="300" selected>5 min stability</option><option value="600">10 min extended</option></select></label>
+            <label class="stress-select"><span>Duration</span><select id="nativeRunnerDuration"><option value="60">60 sec quick</option><option value="180">3 min check</option><option value="300" selected>5 min stable</option><option value="600">10 min extended</option></select></label>
             <div class="stress-actions">
-              <button id="nativeRunnerStartButton" class="command-button danger">Start Native</button>
-              <button id="nativeRunnerStopButton" class="command-button ghost" disabled>Stop Native</button>
+              <button id="nativeRunnerStartButton" class="command-button danger">Start External Tool</button>
+              <button id="nativeRunnerStopButton" class="command-button ghost" disabled>Stop External Tool</button>
             </div>
           </div>
           <div class="stress-live">
-            <div class="stress-ring"><strong id="nativeRunnerState">idle</strong><span id="nativeRunnerPid">no process</span></div>
+            <div class="stress-ring"><strong id="nativeRunnerState">Idle</strong><span id="nativeRunnerPid">No process</span></div>
             <div class="stress-bars">
               <div><span>Tool</span><strong id="nativeRunnerTool">-</strong></div>
               <div><span>Risk</span><strong id="nativeRunnerRisk">-</strong></div>
@@ -248,7 +257,7 @@
             </div>
           </div>
         </div>
-        <div id="nativeRunnerLog" class="stress-log"><span>Native runners require explicit confirmation and never auto-start.</span></div>
+        <div id="nativeRunnerLog" class="stress-log"><span>External stress tools require confirmation and never auto-start.</span></div>
       </article>
       <div class="two-col">
         <article class="panel"><div class="panel-head compact"><span class="icon">▤</span><div><p class="label">latest run</p><h2>Benchmark Result</h2></div></div><div id="benchResultList" class="kv-list"></div></article>
@@ -259,7 +268,7 @@
 
     <section class="view" data-view-panel="community">
       <article class="panel">
-        <div class="panel-head compact"><span class="icon">◎</span><div><p class="label">setup network prototype</p><h2>Community Setups</h2></div></div>
+        <div class="panel-head compact"><span class="icon">◎</span><div><p class="label">community profiles</p><h2>Community Setups</h2></div></div>
         <div class="community-hero">
           <div>
             <strong id="localSetupName">Your setup</strong>
@@ -287,6 +296,39 @@
         <article class="panel"><div class="panel-head compact"><span class="icon">◇</span><div><p class="label">kernel stack</p><h2>Running System Drivers</h2></div></div><div id="driverList" class="compact-grid dense"></div></article>
         <article class="panel"><div class="panel-head compact"><span class="icon">▣</span><div><p class="label">servicing</p><h2>Recent Hotfixes</h2></div></div><div id="hotfixList" class="table-list"></div></article>
       </div>
+    </section>
+
+    <section class="view" data-view-panel="settings">
+      <article class="panel">
+        <div class="panel-head compact"><span class="icon">⚙</span><div><p class="label">application</p><h2>Settings</h2></div></div>
+        <div class="settings-grid">
+          <label class="settings-card">
+            <span>Theme</span>
+            <select id="settingsThemeSelect">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+            <small>Changes the app palette without reloading telemetry.</small>
+          </label>
+          <label class="settings-card">
+            <span>Live polling</span>
+            <select id="settingsPollInterval">
+              <option value="500">0.5 sec</option>
+              <option value="750">0.75 sec</option>
+              <option value="1000">1 sec</option>
+              <option value="1500">1.5 sec</option>
+              <option value="2000">2 sec</option>
+              <option value="5000">5 sec</option>
+            </select>
+            <small>Controls CPU, GPU, RAM, and network refresh speed.</small>
+          </label>
+          <div class="settings-card settings-status-card">
+            <span>Active settings</span>
+            <strong id="settingsStatus">Default</strong>
+            <small>Saved locally for this desktop app.</small>
+          </div>
+        </div>
+      </article>
     </section>
   </main>
   <script src="/app.js"></script>

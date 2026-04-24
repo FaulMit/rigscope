@@ -1,0 +1,8 @@
+name = "rigscope-scoreboard"
+main = "worker.mjs"
+compatibility_date = "2026-04-24"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "rigscope-scoreboard"
+database_id = "PASTE_D1_DATABASE_ID_HERE"
