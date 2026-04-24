@@ -70,6 +70,24 @@ body {
     linear-gradient(135deg, #08090b 0%, #14100f 45%, #0c1010 100%);
 }
 
+.demo-banner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: none;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--cyan) 16%, var(--bg) 84%);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.demo-mode .demo-banner {
+  display: block;
+}
+
 body[data-theme="light"] {
   background:
     radial-gradient(circle at 18% 12%, rgba(0, 125, 163, 0.12), transparent 30%),

@@ -20,6 +20,8 @@
 <p align="center">
   <a href="https://github.com/FaulMit/rigscope/releases/latest"><b>Download</b></a>
   ·
+  <a href="https://faulmit.github.io/rigscope/"><b>Live Demo</b></a>
+  ·
   <a href="#quick-start"><b>Quick Start</b></a>
   ·
   <a href="#features"><b>Features</b></a>
@@ -43,9 +45,10 @@ It gives you one place to inspect a PC, watch live telemetry, run quick benchmar
 - Buyers and sellers who need a transparent setup report before a used-PC deal.
 - Anyone who wants a simple public score card without sharing raw inventory.
 
-## Highlights In 1.1.0
+## Current Highlights
 
 - Hosted Community scoreboard powered by Cloudflare Workers + D1.
+- Static GitHub Pages demo with simulated hardware data and fake stress-test workflows.
 - Successful Community sync is stored online only; local storage is used as an offline fallback.
 - Faster live telemetry polling with user settings for theme and polling speed.
 - Improved Lab UX, stress-test visuals, loading/status states, and native-runner logs.
@@ -141,6 +144,10 @@ Download the latest packaged release:
 
 [github.com/FaulMit/rigscope/releases/latest](https://github.com/FaulMit/rigscope/releases/latest)
 
+Try the static browser demo first:
+
+[faulmit.github.io/rigscope](https://faulmit.github.io/rigscope/)
+
 | Platform | Package |
 | --- | --- |
 | Windows x64 / x86 / ARM64 | `RigScope-Setup-*.exe` or `RigScope-Portable-*.exe` |
@@ -193,6 +200,8 @@ npm test                      # syntax and unit tests
 npm run verify                # preflight checks
 npm run pack                  # unpacked desktop build
 ```
+
+The GitHub Pages demo publishes the `public/` folder and enables `demo-api.js` automatically outside localhost. It is useful for clicking through the interface, but all hardware data, benchmarks, stress tests, native runners, updates, and community sync are simulated.
 
 Release docs: [docs/RELEASE.md](docs/RELEASE.md).
 

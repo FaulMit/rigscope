@@ -34,8 +34,9 @@ const state = {
   polling: { full: false, live: false, fullTimer: null, liveTimer: null }
 };
 
-const SETTINGS_KEY = "rigscope.settings";
-const BENCH_KEY = "rigscope.bench";
+const DEMO_MODE = Boolean(window.RIGSCOPE_DEMO);
+const SETTINGS_KEY = DEMO_MODE ? "rigscope.demo.settings" : "rigscope.settings";
+const BENCH_KEY = DEMO_MODE ? "rigscope.demo.bench" : "rigscope.bench";
 const POLL_INTERVALS = [500, 750, 1000, 1500, 2000, 5000];
 
 const demoSetups = [
@@ -211,7 +212,7 @@ function panelIconName(panelHead) {
 function hydrateUiIcons() {
   setIconOnly($("refreshButton"), "refresh");
   setIconOnly($("updateButton"), "upload");
-  setIconOnly(document.querySelector('a[href="/api/export"]'), "download");
+  setIconOnly(document.querySelector('a[href="/api/export"], a[href="api/export"]'), "download");
   setIconOnly(document.querySelector(".menu-glyph"), "menu");
   document.querySelectorAll(".tab").forEach((tab) => prependIcon(tab, sectionIcons[tab.dataset.view] || "info"));
   document.querySelectorAll(".panel-head .icon").forEach((icon) => setIconOnly(icon, panelIconName(icon.closest(".panel-head"))));
@@ -877,8 +878,55 @@ function startMemoryStress() {
   fill();
 }
 
+function startDemoGpuStress(canvas, intensity = 2) {
+  const ctx = canvas.getContext("2d");
+  state.stress.gpuEngine = "demo-render";
+  state.stress.gpuPasses = intensity >= 3 ? 24 : intensity >= 2 ? 16 : 8;
+  const draw = () => {
+    if (!state.stress.active) return;
+    resizeCanvasToDisplaySize(canvas, 960, 360);
+    const t = performance.now() * 0.001;
+    const w = canvas.width;
+    const h = canvas.height;
+    const gradient = ctx.createLinearGradient(0, 0, w, h);
+    gradient.addColorStop(0, "#071418");
+    gradient.addColorStop(0.48, `hsl(${(t * 58 + 190) % 360}, 74%, 24%)`);
+    gradient.addColorStop(1, "#221419");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(84, 214, 255, 0.16)";
+    ctx.lineWidth = Math.max(1, w / 900);
+    for (let x = 0; x <= w; x += w / 18) {
+      ctx.beginPath();
+      ctx.moveTo(x + Math.sin(t + x * 0.01) * 12, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = "rgba(141, 255, 159, 0.62)";
+    ctx.beginPath();
+    for (let x = 0; x <= w; x += 8) {
+      const p = x / w;
+      const y = h * 0.5 + Math.sin(p * Math.PI * 8 + t * 2) * h * 0.12;
+      if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255, 190, 92, 0.16)";
+    ctx.beginPath();
+    ctx.arc(w * (0.5 + Math.sin(t) * 0.22), h * (0.5 + Math.cos(t * 0.8) * 0.18), h * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    state.stress.gpuFrames++;
+    state.stress.gpuWorkUnits += state.stress.gpuPasses;
+    state.stress.raf = requestAnimationFrame(draw);
+  };
+  state.stress.raf = requestAnimationFrame(draw);
+}
+
 function startGpuStress(intensity = 2) {
   const canvas = resetCanvasElement("gpuStressCanvas");
+  if (DEMO_MODE) {
+    startDemoGpuStress(canvas, intensity);
+    return;
+  }
   const gl = canvas.getContext("webgl2", { antialias: false, powerPreference: "high-performance" }) ||
     canvas.getContext("webgl", { antialias: false, powerPreference: "high-performance" });
   if (!gl) {
@@ -1955,7 +2003,38 @@ async function stopNativeRunner() {
   }
 }
 
+async function runDemoCpuBench() {
+  setBenchBusy("cpuBenchButton", true);
+  $("cpuBenchResult").textContent = "Demo CPU load check running";
+  const start = performance.now();
+  const duration = 1600;
+  while (performance.now() - start < duration) {
+    const progress = clamp((performance.now() - start) / duration * 100);
+    setBar("cpuBenchBar", progress);
+    $("cpuBenchResult").textContent = `${navigator.hardwareConcurrency || 12} demo workers · ${Math.round(progress * 9200).toLocaleString("en-US")} ops`;
+    await new Promise((resolve) => setTimeout(resolve, 160));
+  }
+  state.bench.cpu = {
+    generatedAt: new Date().toISOString(),
+    elapsedMs: Math.round(performance.now() - start),
+    workers: navigator.hardwareConcurrency || 12,
+    ops: 724000,
+    opsPerSec: 452500,
+    avgLoadPct: 74
+  };
+  saveBenchResults();
+  if (state.snapshot) {
+    renderSuite(state.snapshot);
+    renderLab(state.snapshot);
+  }
+  setBenchBusy("cpuBenchButton", false);
+}
+
 async function runCpuBench() {
+  if (DEMO_MODE) {
+    await runDemoCpuBench();
+    return;
+  }
   const durationSec = 8;
   setBenchBusy("cpuBenchButton", true);
   $("cpuBenchResult").textContent = `CPU load check ${durationSec}s`;
@@ -2005,7 +2084,41 @@ async function runCpuBench() {
   }
 }
 
+async function runDemoMemoryBench() {
+  const targetMb = Number($("stressMemoryTarget")?.value || 4096);
+  setBenchBusy("memoryBenchButton", true);
+  $("memoryLabState").textContent = `Demo RAM load check ${targetMb} MB`;
+  const start = performance.now();
+  const duration = 1600;
+  while (performance.now() - start < duration) {
+    const progress = clamp((performance.now() - start) / duration * 100);
+    const held = Math.round(targetMb * Math.min(1, progress / 100));
+    setBar("memoryBenchBar", progress);
+    $("memoryLabState").textContent = `${held}/${targetMb} MB · ${Math.round(progress * 1.8)} demo sweeps`;
+    await new Promise((resolve) => setTimeout(resolve, 160));
+  }
+  state.bench.memory = {
+    generatedAt: new Date().toISOString(),
+    elapsedMs: Math.round(performance.now() - start),
+    targetMb,
+    heldMb: targetMb,
+    cycles: 188,
+    checksum: 770048,
+    score: 100
+  };
+  saveBenchResults();
+  if (state.snapshot) {
+    renderSuite(state.snapshot);
+    renderLab(state.snapshot);
+  }
+  setBenchBusy("memoryBenchButton", false);
+}
+
 async function runMemoryBench() {
+  if (DEMO_MODE) {
+    await runDemoMemoryBench();
+    return;
+  }
   const durationSec = 8;
   const targetMb = Number($("stressMemoryTarget")?.value || 4096);
   setBenchBusy("memoryBenchButton", true);
@@ -2084,7 +2197,56 @@ async function runServerBench(type, url, buttonId, statusId, runningText) {
   }
 }
 
+async function runDemoGpuBench() {
+  const canvas = resetCanvasElement("gpuBenchCanvas");
+  const ctx = canvas.getContext("2d");
+  setBenchBusy("gpuBenchButton", true);
+  $("gpuLabState").textContent = "Demo GPU render running";
+  const start = performance.now();
+  const duration = 1800;
+  let frames = 0;
+  const draw = () => {
+    const elapsed = performance.now() - start;
+    const progress = clamp(elapsed / duration * 100);
+    const w = canvas.width;
+    const h = canvas.height;
+    const gradient = ctx.createLinearGradient(0, 0, w, h);
+    gradient.addColorStop(0, "#14323a");
+    gradient.addColorStop(0.5, `hsl(${180 + progress}, 80%, 42%)`);
+    gradient.addColorStop(1, "#382338");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    for (let i = 0; i < 32; i++) ctx.fillRect((i * 31 + elapsed * 0.08) % w, (i * 17) % h, 36, 12);
+    frames++;
+    $("gpuLabState").textContent = `${Math.round(90 + progress)} fps · ${frames} demo frames`;
+    if (elapsed < duration) {
+      requestAnimationFrame(draw);
+      return;
+    }
+    state.bench.gpu = {
+      generatedAt: new Date().toISOString(),
+      elapsedMs: Math.round(elapsed),
+      frames,
+      fps: 144,
+      workUnits: 24576,
+      engine: "demo-render"
+    };
+    saveBenchResults();
+    if (state.snapshot) {
+      renderSuite(state.snapshot);
+      renderLab(state.snapshot);
+    }
+    setBenchBusy("gpuBenchButton", false);
+  };
+  requestAnimationFrame(draw);
+}
+
 async function runGpuBench() {
+  if (DEMO_MODE) {
+    await runDemoGpuBench();
+    return;
+  }
   const button = $("gpuBenchButton");
   const canvas = resetCanvasElement("gpuBenchCanvas");
   setBenchBusy("gpuBenchButton", true);

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added a static GitHub Pages demo site that reuses the production UI with simulated hardware data, fake stress-test flows, demo native runners, and mock community sync.
+
 ## 1.1.0 - 2026-04-24
 
 ### Added

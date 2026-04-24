@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RigScope</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main class="shell">
@@ -17,7 +17,7 @@
       <div class="actions">
         <button id="refreshButton" class="icon-button" title="Refresh now" aria-label="Refresh now">↻</button>
         <button id="updateButton" class="icon-button" title="Check for updates" aria-label="Check for updates">⇧</button>
-        <a class="icon-button" href="/api/export" title="Export JSON report" aria-label="Export JSON report">⇩</a>
+        <a class="icon-button" href="api/export" title="Export JSON report" aria-label="Export JSON report">⇩</a>
         <div class="status-strip">
           <span class="pulse" id="livePulse"></span>
           <span id="updatedAt">Connecting...</span>
@@ -325,12 +325,13 @@
           <div class="settings-card settings-status-card">
             <span>Active settings</span>
             <strong id="settingsStatus">Default</strong>
-            <small>Saved locally for this desktop app.</small>
+            <small>Saved locally in this browser.</small>
           </div>
         </div>
       </article>
     </section>
   </main>
-  <script src="/app.js"></script>
+  <script src="demo-api.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
