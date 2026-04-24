@@ -9,16 +9,14 @@
   },
   "readme": {
     "currentHighlights": [
-      "Hosted Community scoreboard powered by Cloudflare Workers + D1.",
-      "Static GitHub Pages demo with simulated hardware data and fake stress-test workflows.",
-      "Successful Community sync is stored online only; local storage is used as an offline fallback.",
-      "Faster live telemetry polling with user settings for theme and polling speed.",
-      "Improved Lab UX, stress-test visuals, loading/status states, and native-runner logs.",
-      "Fixed RAM/GPU stress behavior, benchmark formatting, RigScore undefined values, and scoreboard race conditions.",
-      "Release workflow now runs tests and can generate GitHub release notes from the changelog."
+      "Live GitHub Pages demo, powered by the same UI and browser-safe simulated hardware data.",
+      "Online Community leaderboard on Cloudflare Workers + D1, with local fallback only when sync fails.",
+      "Cleaner desktop UX: faster telemetry, theme settings, compact navigation, readable status, and refreshed Lab visuals.",
+      "Built-in CPU/RAM/GPU quick tests, stress flows, native runner previews, reports, and RigScore comparison.",
+      "Release checks now keep README generated blocks and demo fixtures in sync before publishing."
     ],
     "demoNote": [
-      "The GitHub Pages demo publishes the `public/` folder and enables `demo-api.js` automatically outside localhost. It is useful for clicking through the interface, but all hardware data, benchmarks, stress tests, native runners, updates, and community sync are simulated.",
+      "The GitHub Pages demo publishes the real `public/` UI and turns on `demo-api.js` outside localhost. You can click through the app in a browser, but hardware data, benchmarks, stress tests, native runners, updates, and community sync are simulated.",
       "If the Demo Site workflow says GitHub Pages is not enabled, open repository Settings > Pages and set Build and deployment Source to GitHub Actions, then rerun the workflow."
     ]
   },

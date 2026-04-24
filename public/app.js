@@ -35,6 +35,7 @@ const state = {
 };
 
 const DEMO_MODE = Boolean(window.RIGSCOPE_DEMO);
+const URL_PARAMS = new URLSearchParams(window.location.search);
 const SETTINGS_KEY = DEMO_MODE ? "rigscope.demo.settings" : "rigscope.settings";
 const BENCH_KEY = DEMO_MODE ? "rigscope.demo.bench" : "rigscope.bench";
 const POLL_INTERVALS = [500, 750, 1000, 1500, 2000, 5000];
@@ -337,6 +338,9 @@ function loadSettings() {
     state.settings = normalizeSettings(JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"));
   } catch {
     state.settings = normalizeSettings();
+  }
+  if (DEMO_MODE && URL_PARAMS.get("theme")) {
+    state.settings = normalizeSettings({ ...state.settings, theme: URL_PARAMS.get("theme") });
   }
 }
 

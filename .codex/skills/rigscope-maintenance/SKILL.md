@@ -17,6 +17,13 @@ description: Maintain RigScope feature, release, README, and GitHub Pages demo c
 6. If changing app behavior, update `CHANGELOG.md` manually with user-facing changes.
 7. Validate with `npm test`, `npm run check:docs`, and `npm run verify`. For frontend or demo changes, also open the local app/demo in the browser and click the affected sections.
 
+## README Style
+
+- Keep the first screen short, visual, and clear: what it is, why it exists, download/demo links, and one current screenshot.
+- Prefer short sections, scannable bullets, and concrete user outcomes over long exhaustive feature lists.
+- Keep README screenshots in `docs/assets/` and refresh them when the UI or demo presentation changes.
+- The generated README sections are intentionally small. Edit the surrounding README by hand, then use the manifest only for the generated highlights/demo note blocks.
+
 ## Release Checks
 
 - Ensure `package.json`, `package-lock.json`, `docs/product-manifest.json`, README release badge, and changelog version all describe the same release when preparing a release.
