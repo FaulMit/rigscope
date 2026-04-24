@@ -89,6 +89,10 @@ jobs:
         shell: pwsh
         run: npm test
 
+      - name: Run preflight
+        shell: pwsh
+        run: npm run verify
+
       - name: Decode Windows signing certificate
         if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE_BASE64 != ''
         shell: pwsh

@@ -1,0 +1,4 @@
+interface:
+  display_name: "RigScope Maintenance"
+  short_description: "Keep RigScope docs, demo, and releases in sync"
+  default_prompt: "Use $rigscope-maintenance when changing RigScope features so README, demo fixtures, checks, and release notes stay synchronized."

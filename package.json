@@ -23,6 +23,8 @@
     "scoreboard:cf:migrate": "npx wrangler@latest d1 execute rigscope-scoreboard --remote --file scoreboard/cloudflare/schema.sql --config scoreboard/cloudflare/wrangler.toml",
     "scoreboard:cf:deploy": "npx wrangler@latest deploy --config scoreboard/cloudflare/wrangler.toml",
     "verify": "node scripts/preflight.js",
+    "sync:docs": "node scripts/sync-docs-demo.js",
+    "check:docs": "node scripts/sync-docs-demo.js --check",
     "test": "node scripts/run-tests.js",
     "release:notes": "node scripts/release-notes.js",
     "desktop": "electron .",

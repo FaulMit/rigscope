@@ -47,6 +47,7 @@ It gives you one place to inspect a PC, watch live telemetry, run quick benchmar
 
 ## Current Highlights
 
+<!-- RIGSCOPE:CURRENT_HIGHLIGHTS:start -->
 - Hosted Community scoreboard powered by Cloudflare Workers + D1.
 - Static GitHub Pages demo with simulated hardware data and fake stress-test workflows.
 - Successful Community sync is stored online only; local storage is used as an offline fallback.
@@ -54,6 +55,7 @@ It gives you one place to inspect a PC, watch live telemetry, run quick benchmar
 - Improved Lab UX, stress-test visuals, loading/status states, and native-runner logs.
 - Fixed RAM/GPU stress behavior, benchmark formatting, RigScore undefined values, and scoreboard race conditions.
 - Release workflow now runs tests and can generate GitHub release notes from the changelog.
+<!-- RIGSCOPE:CURRENT_HIGHLIGHTS:end -->
 
 ## Features
 
@@ -201,9 +203,11 @@ npm run verify                # preflight checks
 npm run pack                  # unpacked desktop build
 ```
 
+<!-- RIGSCOPE:DEMO_NOTE:start -->
 The GitHub Pages demo publishes the `public/` folder and enables `demo-api.js` automatically outside localhost. It is useful for clicking through the interface, but all hardware data, benchmarks, stress tests, native runners, updates, and community sync are simulated.
 
 If the Demo Site workflow says GitHub Pages is not enabled, open repository Settings > Pages and set Build and deployment Source to GitHub Actions, then rerun the workflow.
+<!-- RIGSCOPE:DEMO_NOTE:end -->
 
 Release docs: [docs/RELEASE.md](docs/RELEASE.md).
 

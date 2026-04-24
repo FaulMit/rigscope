@@ -1,0 +1,143 @@
+{
+  "app": {
+    "name": "RigScope",
+    "tagline": "One clean cockpit for your whole PC.",
+    "version": "1.1.0",
+    "repository": "https://github.com/FaulMit/rigscope",
+    "liveDemo": "https://faulmit.github.io/rigscope/",
+    "scoreboardUrl": "https://rigscope-scoreboard.faulmit.workers.dev"
+  },
+  "readme": {
+    "currentHighlights": [
+      "Hosted Community scoreboard powered by Cloudflare Workers + D1.",
+      "Static GitHub Pages demo with simulated hardware data and fake stress-test workflows.",
+      "Successful Community sync is stored online only; local storage is used as an offline fallback.",
+      "Faster live telemetry polling with user settings for theme and polling speed.",
+      "Improved Lab UX, stress-test visuals, loading/status states, and native-runner logs.",
+      "Fixed RAM/GPU stress behavior, benchmark formatting, RigScore undefined values, and scoreboard race conditions.",
+      "Release workflow now runs tests and can generate GitHub release notes from the changelog."
+    ],
+    "demoNote": [
+      "The GitHub Pages demo publishes the `public/` folder and enables `demo-api.js` automatically outside localhost. It is useful for clicking through the interface, but all hardware data, benchmarks, stress tests, native runners, updates, and community sync are simulated.",
+      "If the Demo Site workflow says GitHub Pages is not enabled, open repository Settings > Pages and set Build and deployment Source to GitHub Actions, then rerun the workflow."
+    ]
+  },
+  "demo": {
+    "banner": "Live demo: all hardware data and stress tests are simulated",
+    "uptimeHours": 9.4,
+    "system": {
+      "machineName": "DEMO-RIG",
+      "hostname": "demo-rig",
+      "platform": "win32",
+      "arch": "x64",
+      "os": "Microsoft Windows 11 Pro",
+      "build": "26200",
+      "cpu": "AMD Ryzen 9 5900X 12-Core Processor",
+      "cpuManufacturer": "AuthenticAMD",
+      "cpuSocket": "AM4",
+      "cpuArchitecture": "x64",
+      "cpuFamily": "25",
+      "cores": 12,
+      "threads": 24,
+      "maxClockMhz": 4950,
+      "l2Kb": 6144,
+      "l3Kb": 65536,
+      "gpu": "NVIDIA GeForce RTX 3060 Ti",
+      "gpuVideoProcessor": "GA104",
+      "gpuDriverVersion": "32.0.15.7652",
+      "gpuDriverDate": "2026-03-18T00:00:00.000Z",
+      "vramMb": 8192,
+      "memoryTotalMb": 32768,
+      "memoryTotalGb": 32,
+      "memorySticksMb": [8192, 8192, 8192, 8192],
+      "memorySlots": ["A1", "A2", "B1", "B2"],
+      "memoryManufacturer": "G.Skill",
+      "memoryPart": "F4-3600C16-8GTZNC",
+      "memorySpeedMhz": 3600,
+      "boardManufacturer": "ASUSTeK COMPUTER INC.",
+      "boardProduct": "PRIME X470-PRO",
+      "biosVendor": "American Megatrends Inc.",
+      "biosVersion": "6202",
+      "biosReleaseDate": "2025-09-18T00:00:00.000Z",
+      "installDate": "2025-11-15T10:12:00.000Z"
+    },
+    "displays": [
+      { "name": "DELL S2721DGF", "manufacturer": "Dell", "serial": "DEMO-MON-01", "width": 2560, "height": 1440, "refreshRate": 165, "primary": true },
+      { "name": "LG 27GL850", "manufacturer": "LG", "serial": "DEMO-MON-02", "width": 2560, "height": 1440, "refreshRate": 144, "primary": false }
+    ],
+    "disks": [
+      { "name": "C:", "label": "System", "model": "Samsung SSD 980 PRO 1TB", "totalGb": 930, "freeGb": 412, "usedPct": 56, "busType": "NVMe", "interface": "PCIe 4.0", "mediaType": "SSD", "firmware": "5B2QGXA7" },
+      { "name": "D:", "label": "Projects", "model": "Crucial MX500 2TB", "totalGb": 1860, "freeGb": 1280, "usedPct": 31, "busType": "SATA", "interface": "SATA", "mediaType": "SSD", "firmware": "M3CR046" },
+      { "name": "E:", "label": "Archive", "model": "Seagate BarraCuda 4TB", "totalGb": 3720, "freeGb": 2215, "usedPct": 40, "busType": "SATA", "interface": "SATA", "mediaType": "HDD", "firmware": "0001" }
+    ],
+    "communityProfiles": [
+      {
+        "id": "demo-7800x3d-4080",
+        "source": "scoreboard",
+        "name": "Aurora 4080 Desk Rig",
+        "owner": "demo_creator",
+        "score": 8840,
+        "scoreLabel": "High-end desktop",
+        "scoreConfidence": 92,
+        "cpu": "AMD Ryzen 7 7800X3D",
+        "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+        "memory": "32 GB DDR5",
+        "storage": "2 TB NVMe",
+        "board": "ROG STRIX B650E-F",
+        "os": "Windows 11 Pro",
+        "bench": { "cpu": "742,000 ops/sec", "memory": "4096/4096 MB", "gpu": "188 fps", "sensors": "CPU 41% - RAM 49% - GPU 62C 71%" }
+      },
+      {
+        "id": "demo-5900x-3060ti",
+        "source": "scoreboard",
+        "name": "Creator 3060 Ti Workstation",
+        "owner": "faulmit_demo",
+        "score": 6395,
+        "scoreLabel": "Strong gaming PC",
+        "scoreConfidence": 74,
+        "cpu": "AMD Ryzen 9 5900X",
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "memory": "32 GB DDR4",
+        "storage": "2 NVMe + 2 SSD",
+        "board": "PRIME X470-PRO",
+        "os": "Windows 11 Pro",
+        "bench": { "cpu": "614,000 ops/sec", "memory": "4096/4096 MB", "gpu": "112 fps", "sensors": "CPU 28% - RAM 43% - GPU 54C 39%" }
+      }
+    ],
+    "toolkit": [
+      { "id": "nvidia-smi", "name": "NVIDIA SMI", "category": "Sensors", "available": true, "version": "555.85" },
+      { "id": "hwinfo", "name": "HWiNFO", "category": "Sensors", "available": false, "version": "" },
+      { "id": "prime95", "name": "Prime95 / mprime", "category": "CPU stress", "available": true, "version": "demo" },
+      { "id": "furmark", "name": "FurMark", "category": "GPU stress", "available": true, "version": "demo" },
+      { "id": "occt", "name": "OCCT", "category": "Stability suite", "available": false, "version": "" },
+      { "id": "y-cruncher", "name": "y-cruncher", "category": "CPU / memory stress", "available": false, "version": "" },
+      { "id": "smartctl", "name": "smartctl", "category": "Storage", "available": true, "version": "7.4" }
+    ],
+    "nativeProfiles": [
+      {
+        "id": "prime95-small-fft",
+        "toolId": "prime95",
+        "label": "Prime95 Small FFT (demo)",
+        "available": true,
+        "executable": "demo://prime95",
+        "risk": "high",
+        "durationDefaultSec": 300,
+        "durationMaxSec": 600,
+        "notes": "Demo mode simulates the launch only. No external process is started.",
+        "safety": { "maxDurationSec": 600, "recommendedMonitor": "In the real app, watch CPU package temperature and VRM temperature." }
+      },
+      {
+        "id": "furmark-1080p",
+        "toolId": "furmark",
+        "label": "FurMark Burn-in 1080p (demo)",
+        "available": true,
+        "executable": "demo://furmark",
+        "risk": "high",
+        "durationDefaultSec": 300,
+        "durationMaxSec": 600,
+        "notes": "Demo mode shows the workflow without launching FurMark.",
+        "safety": { "maxDurationSec": 600, "recommendedMonitor": "In the real app, watch GPU temperature, hotspot, fan speed, and power draw." }
+      }
+    ]
+  }
+}

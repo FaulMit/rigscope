@@ -1662,9 +1662,9 @@ function renderNetwork(inv) {
         <span>Description</span><strong>${esc(n.description)}</strong>
         <span>Link speed</span><strong>${esc(n.linkSpeed)}</strong>
         <span>MAC</span><strong>${esc(n.mac)}</strong>
-        <span>IPv4</span><strong>${esc((n.ipv4 || []).join(", "))}</strong>
-        <span>Gateway</span><strong>${esc((n.gateway || []).join(", "))}</strong>
-        <span>DNS</span><strong>${esc((n.dns || []).join(", "))}</strong>
+        <span>IPv4</span><strong>${esc(prettyValue(n.ipv4))}</strong>
+        <span>Gateway</span><strong>${esc(prettyValue(n.gateway))}</strong>
+        <span>DNS</span><strong>${esc(prettyValue(n.dns))}</strong>
       </div>
     </div>
   `), "No network adapter data");

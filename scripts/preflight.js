@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { spawnSync } = require("child_process");
 
 const root = path.resolve(__dirname, "..");
 const readJson = (file) => JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
@@ -38,6 +39,9 @@ requireCondition(readme.includes("auto-update") || readme.includes("автооб
 const releaseDocs = read("docs/RELEASE.md");
 requireCondition(releaseDocs.includes("Auto updates"), "Release docs must document auto updates.");
 warnCondition(releaseDocs.includes("signing secrets"), "Release docs should mention signing secrets.");
+
+const docsCheck = spawnSync(process.execPath, [path.join(root, "scripts", "sync-docs-demo.js"), "--check"], { encoding: "utf8" });
+requireCondition(docsCheck.status === 0, `README/demo fixtures must match docs/product-manifest.json. ${docsCheck.stderr || docsCheck.stdout}`.trim());
 
 if (warnings.length) {
   console.warn("Preflight warnings:");

@@ -6,42 +6,12 @@
 
   window.RIGSCOPE_DEMO = true;
 
-  const startedAt = Date.now() - 1000 * 60 * 60 * 9.4;
   const originalFetch = window.fetch.bind(window);
-  const communityProfiles = [
-    {
-      id: "demo-7800x3d-4080",
-      source: "scoreboard",
-      name: "Aurora 4080 Desk Rig",
-      owner: "demo_creator",
-      score: 8840,
-      scoreLabel: "High-end desktop",
-      scoreConfidence: 92,
-      cpu: "AMD Ryzen 7 7800X3D",
-      gpu: "NVIDIA GeForce RTX 4080 SUPER",
-      memory: "32 GB DDR5",
-      storage: "2 TB NVMe",
-      board: "ROG STRIX B650E-F",
-      os: "Windows 11 Pro",
-      bench: { cpu: "742,000 ops/sec", memory: "4096/4096 MB", gpu: "188 fps", sensors: "CPU 41% · RAM 49% · GPU 62°C 71%" }
-    },
-    {
-      id: "demo-5900x-3060ti",
-      source: "scoreboard",
-      name: "Creator 3060 Ti Workstation",
-      owner: "faulmit_demo",
-      score: 6395,
-      scoreLabel: "Strong gaming PC",
-      scoreConfidence: 74,
-      cpu: "AMD Ryzen 9 5900X",
-      gpu: "NVIDIA GeForce RTX 3060 Ti",
-      memory: "32 GB DDR4",
-      storage: "2 NVMe + 2 SSD",
-      board: "PRIME X470-PRO",
-      os: "Windows 11 Pro",
-      bench: { cpu: "614,000 ops/sec", memory: "4096/4096 MB", gpu: "112 fps", sensors: "CPU 28% · RAM 43% · GPU 54°C 39%" }
-    }
-  ];
+  const fixtures = window.RIGSCOPE_DEMO_FIXTURES || {};
+  const system = fixtures.system || {};
+  const startedAt = Date.now() - 1000 * 60 * 60 * Number(fixtures.uptimeHours || 9.4);
+  const memoryTotalMb = Number(system.memoryTotalMb || 32768);
+  const communityProfiles = JSON.parse(JSON.stringify(fixtures.communityProfiles || []));
 
   let stress = null;
   let nativeRunner = { active: false, pid: null, label: null, elapsedMs: 0, durationMs: 0, output: [], exitCode: null, report: null };
@@ -75,22 +45,22 @@
     return {
       generatedAt: nowIso(),
       machine: {
-        name: "DEMO-RIG",
-        hostname: "demo-rig",
-        platform: "win32",
-        arch: "x64",
+        name: system.machineName || "DEMO-RIG",
+        hostname: system.hostname || "demo-rig",
+        platform: system.platform || "win32",
+        arch: system.arch || "x64",
         uptimeHours,
-        os: "Microsoft Windows 11 Pro",
-        build: "26200",
-        cpu: "AMD Ryzen 9 5900X 12-Core Processor",
-        gpu: "NVIDIA GeForce RTX 3060 Ti"
+        os: system.os || "Microsoft Windows 11 Pro",
+        build: system.build || "26200",
+        cpu: system.cpu || "AMD Ryzen 9 5900X 12-Core Processor",
+        gpu: system.gpu || "NVIDIA GeForce RTX 3060 Ti"
       },
       cpu: {
         loadPct: cpuLoad,
-        cores: 12,
-        threads: 24,
+        cores: Number(system.cores || 12),
+        threads: Number(system.threads || 24),
         maxClockMhz: wave(3650, 4725, 0.5),
-        perCore: Array.from({ length: 24 }, (_, i) => wave(3, i % 3 === 0 ? 72 : 45, 0.7 + i * 0.03, i)),
+        perCore: Array.from({ length: Number(system.threads || 24) }, (_, i) => wave(3, i % 3 === 0 ? 72 : 45, 0.7 + i * 0.03, i)),
         processes: [
           { name: "Code.exe", pid: 4212, cpuPct: 9.4, memoryMb: 1180 },
           { name: "chrome.exe", pid: 5804, cpuPct: 6.8, memoryMb: 920 },
@@ -98,19 +68,19 @@
         ]
       },
       memory: {
-        totalMb: 32768,
-        usedMb: Math.round(32768 * ramPct / 100),
-        freeMb: Math.round(32768 * (100 - ramPct) / 100),
+        totalMb: memoryTotalMb,
+        usedMb: Math.round(memoryTotalMb * ramPct / 100),
+        freeMb: Math.round(memoryTotalMb * (100 - ramPct) / 100),
         usedPct: ramPct,
-        sticks: [8192, 8192, 8192, 8192]
+        sticks: system.memorySticksMb || [8192, 8192, 8192, 8192]
       },
       gpu: {
-        name: "NVIDIA GeForce RTX 3060 Ti",
+        name: system.gpu || "NVIDIA GeForce RTX 3060 Ti",
         util: gpuLoad,
         utilPct: gpuLoad,
         temp: gpuTemp,
         memUsed: 2450,
-        memTotal: 8192,
+        memTotal: Number(system.vramMb || 8192),
         power: wave(28, 142, 0.5),
         powerLimit: 200,
         fanPct: wave(30, 58, 0.4)
@@ -121,11 +91,7 @@
         status: "demo latency probes"
       },
       inventory: inventory(),
-      disks: [
-        { name: "C:", label: "System", totalGb: 930, freeGb: 412, usedPct: 56 },
-        { name: "D:", label: "Projects", totalGb: 1860, freeGb: 1280, usedPct: 31 },
-        { name: "E:", label: "Archive", totalGb: 3720, freeGb: 2215, usedPct: 40 }
-      ],
+      disks: (fixtures.disks || []).map(({ name, label, totalGb, freeGb, usedPct }) => ({ name, label, totalGb, freeGb, usedPct })),
       processes: [
         { name: "Code.exe", pid: 4212, memoryMb: 1180, cpuPct: 9.4 },
         { name: "chrome.exe", pid: 5804, memoryMb: 920, cpuPct: 6.8 },
@@ -140,37 +106,28 @@
   }
 
   function inventory() {
+    const displays = fixtures.displays || [];
+    const disks = fixtures.disks || [];
     return {
       system: { manufacturer: "Demo Systems", model: "RigScope Preview Tower", type: "x64-based PC", domain: "WORKGROUP", user: "demo\\visitor" },
-      os: { caption: "Microsoft Windows 11 Pro", version: "10.0.26200", build: "26200", architecture: "64-bit", locale: "en-US", installDate: "2025-11-15T10:12:00.000Z", bootTime: new Date(startedAt).toISOString(), windowsDirectory: "C:\\Windows" },
-      board: { manufacturer: "ASUSTeK COMPUTER INC.", product: "PRIME X470-PRO", serial: "DEMO-BOARD-0001" },
-      bios: { vendor: "American Megatrends Inc.", version: "6202", releaseDate: "2025-09-18T00:00:00.000Z", mode: "UEFI" },
-      cpu: { name: "AMD Ryzen 9 5900X 12-Core Processor", manufacturer: "AuthenticAMD", socket: "AM4", architecture: "x64", family: "25", cores: 12, threads: 24, currentClockMhz: wave(3650, 4725, 0.5), maxClockMhz: 4950, externalClockMhz: 100, virtualization: "Enabled", l2Kb: 6144, l3Kb: 65536, processorId: "DEMO-AMD-5900X" },
+      os: { caption: system.os || "Microsoft Windows 11 Pro", version: `10.0.${system.build || "26200"}`, build: system.build || "26200", architecture: "64-bit", locale: "en-US", installDate: system.installDate || "2025-11-15T10:12:00.000Z", bootTime: new Date(startedAt).toISOString(), windowsDirectory: "C:\\Windows" },
+      board: { manufacturer: system.boardManufacturer || "ASUSTeK COMPUTER INC.", product: system.boardProduct || "PRIME X470-PRO", serial: "DEMO-BOARD-0001" },
+      bios: { vendor: system.biosVendor || "American Megatrends Inc.", version: system.biosVersion || "6202", releaseDate: system.biosReleaseDate || "2025-09-18T00:00:00.000Z", mode: "UEFI" },
+      cpu: { name: system.cpu || "AMD Ryzen 9 5900X 12-Core Processor", manufacturer: system.cpuManufacturer || "AuthenticAMD", socket: system.cpuSocket || "AM4", architecture: system.cpuArchitecture || "x64", family: system.cpuFamily || "25", cores: Number(system.cores || 12), threads: Number(system.threads || 24), currentClockMhz: wave(3650, 4725, 0.5), maxClockMhz: Number(system.maxClockMhz || 4950), externalClockMhz: 100, virtualization: "Enabled", l2Kb: Number(system.l2Kb || 6144), l3Kb: Number(system.l3Kb || 65536), processorId: "DEMO-CPU" },
       memory: {
-        totalGb: 32,
-        modules: ["A1", "A2", "B1", "B2"].map((slot, index) => ({ slot: `DIMM_${slot}`, bank: `BANK ${index}`, manufacturer: "G.Skill", part: "F4-3600C16-8GTZNC", serial: `DEMO00${index + 1}`, sizeGb: 8, speedMhz: 3600, configuredMhz: 3600 }))
+        totalGb: Number(system.memoryTotalGb || 32),
+        modules: (system.memorySlots || ["A1", "A2", "B1", "B2"]).map((slot, index) => ({ slot: `DIMM_${slot}`, bank: `BANK ${index}`, manufacturer: system.memoryManufacturer || "G.Skill", part: system.memoryPart || "F4-3600C16-8GTZNC", serial: `DEMO00${index + 1}`, sizeGb: Math.round(Number((system.memorySticksMb || [8192])[index] || 8192) / 1024), speedMhz: Number(system.memorySpeedMhz || 3600), configuredMhz: Number(system.memorySpeedMhz || 3600) }))
       },
-      gpu: { name: "NVIDIA GeForce RTX 3060 Ti", vramMb: 8192, videoProcessor: "NVIDIA GeForce RTX 3060 Ti", adapterCompatibility: "NVIDIA", driverVersion: "32.0.15.7652", driverDate: "2026-03-18T00:00:00.000Z" },
-      gpus: [{ name: "NVIDIA GeForce RTX 3060 Ti", vramMb: 8192, videoProcessor: "GA104", adapterCompatibility: "NVIDIA", driverVersion: "32.0.15.7652", driverDate: "2026-03-18T00:00:00.000Z", status: "OK", pnp: "PCI\\VEN_10DE&DEV_2489" }],
-      displays: [{ name: "DELL S2721DGF", width: 2560, height: 1440, refreshRate: 165, primary: true }, { name: "LG 27GL850", width: 2560, height: 1440, refreshRate: 144, primary: false }],
-      physicalDisks: [
-        { model: "Samsung SSD 980 PRO 1TB", sizeGb: 1000, health: "Healthy", status: "OK", operational: "Online", busType: "NVMe", interface: "PCIe 4.0", mediaType: "SSD", firmware: "5B2QGXA7" },
-        { model: "Crucial MX500 2TB", sizeGb: 2000, health: "Healthy", status: "OK", operational: "Online", busType: "SATA", interface: "SATA", mediaType: "SSD", firmware: "M3CR046" },
-        { model: "Seagate BarraCuda 4TB", sizeGb: 4000, health: "Healthy", status: "OK", operational: "Online", busType: "SATA", interface: "SATA", mediaType: "HDD", firmware: "0001" }
-      ],
-      volumes: [
-        { name: "Windows", drive: "C:", label: "System", fileSystem: "NTFS", totalGb: 930, sizeGb: 930, freeGb: 412, usedPct: 56, health: "Healthy" },
-        { name: "Projects", drive: "D:", label: "Projects", fileSystem: "NTFS", totalGb: 1860, sizeGb: 1860, freeGb: 1280, usedPct: 31, health: "Healthy" },
-        { name: "Archive", drive: "E:", label: "Archive", fileSystem: "NTFS", totalGb: 3720, sizeGb: 3720, freeGb: 2215, usedPct: 40, health: "Healthy" }
-      ],
+      gpu: { name: system.gpu || "NVIDIA GeForce RTX 3060 Ti", vramMb: Number(system.vramMb || 8192), videoProcessor: system.gpuVideoProcessor || system.gpu || "NVIDIA GeForce RTX 3060 Ti", adapterCompatibility: "NVIDIA", driverVersion: system.gpuDriverVersion || "32.0.15.7652", driverDate: system.gpuDriverDate || "2026-03-18T00:00:00.000Z" },
+      gpus: [{ name: system.gpu || "NVIDIA GeForce RTX 3060 Ti", vramMb: Number(system.vramMb || 8192), videoProcessor: system.gpuVideoProcessor || "GA104", adapterCompatibility: "NVIDIA", driverVersion: system.gpuDriverVersion || "32.0.15.7652", driverDate: system.gpuDriverDate || "2026-03-18T00:00:00.000Z", status: "OK", pnp: "PCI\\VEN_10DE&DEV_2489" }],
+      displays: displays.map((display) => ({ name: display.name, width: display.width, height: display.height, refreshRate: display.refreshRate, primary: display.primary })),
+      physicalDisks: disks.map((disk) => ({ model: disk.model, sizeGb: disk.totalGb, health: "Healthy", status: "OK", operational: "Online", busType: disk.busType, interface: disk.interface, mediaType: disk.mediaType, firmware: disk.firmware })),
+      volumes: disks.map((disk) => ({ name: disk.label, drive: disk.name, label: disk.label, fileSystem: "NTFS", totalGb: disk.totalGb, sizeGb: disk.totalGb, freeGb: disk.freeGb, usedPct: disk.usedPct, health: "Healthy" })),
       networkAdapters: [
         { name: "Intel I211 Gigabit Network Connection", description: "Intel Ethernet Controller", status: "Up", linkSpeed: "1 Gbps", mac: "AA:BB:CC:xx:xx:10", ipv4: ["192.168.1.42"], dns: ["1.1.1.1", "8.8.8.8"], gateway: ["192.168.1.1"] },
         { name: "Intel Wi-Fi 6 AX200", description: "Wi-Fi 6 adapter", status: "Disconnected", linkSpeed: "-", mac: "AA:BB:CC:xx:xx:11", ipv4: [], dns: [], gateway: [] }
       ],
-      monitors: [
-        { name: "DELL S2721DGF", manufacturer: "Dell", serial: "DEMO-MON-01", instance: "DISPLAY\\DEL41F7", active: true, screenWidth: 2560, screenHeight: 1440 },
-        { name: "LG 27GL850", manufacturer: "LG", serial: "DEMO-MON-02", instance: "DISPLAY\\GSM5B7F", active: true, screenWidth: 2560, screenHeight: 1440 }
-      ],
+      monitors: displays.map((display, index) => ({ name: display.name, manufacturer: display.manufacturer, serial: display.serial, instance: `DISPLAY\\DEMO${index}`, active: true, screenWidth: display.width, screenHeight: display.height })),
       soundDevices: [{ name: "Realtek USB Audio", manufacturer: "Realtek", status: "OK" }, { name: "NVIDIA High Definition Audio", manufacturer: "NVIDIA", status: "OK" }],
       usbControllers: [{ name: "AMD USB 3.10 eXtensible Host Controller", status: "OK" }, { name: "Generic USB Hub", status: "OK" }, { name: "Logitech USB Receiver", status: "OK" }],
       inputDevices: [{ name: "Keychron K8 Pro", type: "Keyboard", status: "OK" }, { name: "Logitech G Pro Wireless", type: "Mouse", status: "OK" }],
@@ -211,15 +168,7 @@
   }
 
   function toolkit() {
-    const tools = [
-      ["nvidia-smi", "NVIDIA SMI", "Sensors", true, "555.85"],
-      ["hwinfo", "HWiNFO", "Sensors", false, ""],
-      ["prime95", "Prime95 / mprime", "CPU stress", true, "demo"],
-      ["furmark", "FurMark", "GPU stress", true, "demo"],
-      ["occt", "OCCT", "Stability suite", false, ""],
-      ["y-cruncher", "y-cruncher", "CPU / memory stress", false, ""],
-      ["smartctl", "smartctl", "Storage", true, "7.4"]
-    ].map(([id, name, category, available, version]) => ({ id, name, category, available, supported: true, version, capabilities: available ? ["demo detection", "safe preview"] : ["install to enable"] }));
+    const tools = (fixtures.toolkit || []).map((tool) => ({ ...tool, supported: true, capabilities: tool.available ? ["demo detection", "safe preview"] : ["install to enable"] }));
     return { generatedAt: nowIso(), available: tools.filter((tool) => tool.available).length, total: tools.length, tools };
   }
 
@@ -228,10 +177,7 @@
       generatedAt: nowIso(),
       acknowledgement: "DEMO_NATIVE_STRESS",
       status: nativeRunner,
-      profiles: [
-        { id: "prime95-small-fft", toolId: "prime95", label: "Prime95 Small FFT (demo)", available: true, executable: "demo://prime95", risk: "high", durationDefaultSec: 300, durationMaxSec: 600, notes: "Demo mode simulates the launch only. No external process is started.", safety: { maxDurationSec: 600, recommendedMonitor: "In the real app, watch CPU package temperature and VRM temperature." } },
-        { id: "furmark-1080p", toolId: "furmark", label: "FurMark Burn-in 1080p (demo)", available: true, executable: "demo://furmark", risk: "high", durationDefaultSec: 300, durationMaxSec: 600, notes: "Demo mode shows the workflow without launching FurMark.", safety: { maxDurationSec: 600, recommendedMonitor: "In the real app, watch GPU temperature, hotspot, fan speed, and power draw." } }
-      ]
+      profiles: fixtures.nativeProfiles || []
     };
   }
 
@@ -246,8 +192,8 @@
       communityProfiles.unshift(profile);
       return json({ profile, status: "published to demo", github: "demo-scoreboard" });
     }
-    if (path.endsWith("/api/updates/status")) return json({ supported: false, status: "unavailable", currentVersion: "1.1.0", error: "Demo site cannot install desktop updates." });
-    if (path.includes("/api/updates/")) return json({ supported: false, status: "unavailable", currentVersion: "1.1.0" });
+    if (path.endsWith("/api/updates/status")) return json({ supported: false, status: "unavailable", currentVersion: fixtures.app?.version || "1.1.0", error: "Demo site cannot install desktop updates." });
+    if (path.includes("/api/updates/")) return json({ supported: false, status: "unavailable", currentVersion: fixtures.app?.version || "1.1.0" });
     if (path.endsWith("/api/native-runners")) return json(nativeRunners());
     if (path.endsWith("/api/native-runners/status")) {
       if (nativeRunner.active) {
@@ -296,7 +242,7 @@
     document.body.classList.add("demo-mode");
     const banner = document.createElement("div");
     banner.className = "demo-banner";
-    banner.textContent = "Live demo: all hardware data and stress tests are simulated";
+    banner.textContent = fixtures.banner || "Live demo: all hardware data and stress tests are simulated";
     document.body.prepend(banner);
     const exportLink = document.querySelector('a[href="api/export"], a[href="/api/export"]');
     if (exportLink) {

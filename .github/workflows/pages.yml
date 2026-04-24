@@ -28,6 +28,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Check generated docs and demo fixtures
+        run: node scripts/sync-docs-demo.js --check
+
       - name: Check Pages configuration
         id: pages
         env:
