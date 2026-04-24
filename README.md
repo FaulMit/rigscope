@@ -203,6 +203,8 @@ npm run pack                  # unpacked desktop build
 
 The GitHub Pages demo publishes the `public/` folder and enables `demo-api.js` automatically outside localhost. It is useful for clicking through the interface, but all hardware data, benchmarks, stress tests, native runners, updates, and community sync are simulated.
 
+If the Demo Site workflow says GitHub Pages is not enabled, open repository Settings > Pages and set Build and deployment Source to GitHub Actions, then rerun the workflow.
+
 Release docs: [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Security Model
