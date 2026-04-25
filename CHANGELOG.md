@@ -10,6 +10,14 @@
 ### Changed
 
 - Refreshed README structure, demo positioning, and public screenshots for a lighter first impression.
+- Reworked the main UI navigation into a persistent icon sidebar and reduced Lab text noise.
+- Smoothed Lab benchmark/progress updates and toned down GPU bench/stress visuals.
+- Split visible GPU animations from background WebGL workload so stress tests stay heavy without noisy render output.
+
+### Fixed
+
+- Fixed live polling overwriting active quick-test UI states while a benchmark is running.
+- Fixed GPU quick bench WebGL failures leaving the test stuck instead of falling back to canvas rendering.
 
 ## 1.1.0 - 2026-04-24
 

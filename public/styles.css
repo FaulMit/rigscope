@@ -41,6 +41,7 @@ body[data-theme="light"] {
 body[data-theme="light"] .status-strip,
 body[data-theme="light"] .icon-button,
 body[data-theme="light"] .section-menu-button,
+body[data-theme="light"] .section-nav,
 body[data-theme="light"] .tab,
 body[data-theme="light"] .module-card,
 body[data-theme="light"] .mini-card,
@@ -96,9 +97,18 @@ body[data-theme="light"] {
 }
 
 .shell {
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  column-gap: 18px;
+  align-items: start;
   width: min(1480px, calc(100vw - 40px));
   margin: 0 auto;
   padding: 28px 0 40px;
+}
+
+.shell > :not(.section-nav) {
+  grid-column: 2;
+  min-width: 0;
 }
 
 .topbar,
@@ -225,14 +235,48 @@ select:focus-visible {
 
 .section-nav {
   position: relative;
-  z-index: 30;
+  grid-column: 1;
+  grid-row: 1 / span 40;
+  z-index: 35;
   display: flex;
-  align-items: center;
-  margin-bottom: 14px;
+  flex-direction: column;
+  width: 216px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(84, 214, 255, 0.1), transparent 34%),
+    color-mix(in srgb, var(--menu-bg) 94%, transparent);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.demo-mode .section-nav {
+  top: auto;
+}
+
+.section-nav::before {
+  content: "RigScope";
+  display: block;
+  padding: 8px 10px 2px;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 850;
+}
+
+.section-nav::after {
+  content: "Desktop control";
+  display: block;
+  order: -1;
+  padding: 2px 10px 0;
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .section-menu-button {
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 10px;
   min-width: 178px;
@@ -261,33 +305,22 @@ select:focus-visible {
 }
 
 .tabs {
-  position: absolute;
-  top: calc(100% + 7px);
-  left: 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  width: min(520px, calc(100vw - 40px));
-  max-height: min(70vh, 420px);
+  grid-template-columns: 1fr;
+  gap: 6px;
+  width: 100%;
+  max-height: none;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-color: rgba(84, 214, 255, 0.38) transparent;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--menu-bg);
-  backdrop-filter: blur(16px);
-  box-shadow: var(--shadow);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-6px);
-  transition: opacity 140ms ease, transform 140ms ease;
-}
-
-.section-nav.open .tabs {
+  margin-top: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0);
 }
 
 .tab {
@@ -295,10 +328,10 @@ select:focus-visible {
   align-items: center;
   gap: 9px;
   min-width: 0;
-  min-height: 34px;
-  padding: 7px 10px;
+  min-height: 42px;
+  padding: 9px 10px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 10px;
   color: var(--muted);
   background: transparent;
   cursor: pointer;
@@ -316,8 +349,10 @@ select:focus-visible {
 
 .tab.active {
   color: var(--text);
-  border-color: rgba(141, 255, 159, 0.45);
-  background: rgba(141, 255, 159, 0.12);
+  border-color: rgba(84, 214, 255, 0.38);
+  background:
+    linear-gradient(90deg, rgba(84, 214, 255, 0.17), rgba(141, 255, 159, 0.08)),
+    rgba(255,255,255,0.04);
 }
 
 .tab.active .svg-icon {
@@ -356,6 +391,10 @@ body:not([data-view="overview"]) .metric-grid {
 .view > .panel + .two-col,
 .view > .two-col + .two-col {
   margin-top: 16px;
+}
+
+.view[data-view-panel="lab"] > .inventory-panel {
+  display: none;
 }
 
 .panel {
@@ -568,7 +607,7 @@ body:not([data-view="overview"]) .metric-grid {
 }
 
 .lab-card {
-  border-top: 2px solid rgba(255, 106, 122, 0.42);
+  border-top: 2px solid rgba(84, 214, 255, 0.32);
 }
 
 .suite-title,
@@ -642,8 +681,8 @@ body:not([data-view="overview"]) .metric-grid {
   width: 0%;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--amber), var(--green));
-  transition: width 260ms ease;
+  background: linear-gradient(90deg, var(--cyan), var(--green));
+  transition: width 420ms cubic-bezier(.2, .8, .2, 1);
 }
 
 #gpuBenchCanvas {
@@ -653,7 +692,9 @@ body:not([data-view="overview"]) .metric-grid {
   margin: 16px 0 0;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255,255,255,0.04);
+  background:
+    linear-gradient(135deg, rgba(84, 214, 255, 0.12), rgba(141, 255, 159, 0.05)),
+    rgba(255,255,255,0.04);
 }
 
 #gpuStressCanvas {
@@ -663,10 +704,10 @@ body:not([data-view="overview"]) .metric-grid {
   border: 0;
   border-top: 1px solid var(--line);
   background:
-    linear-gradient(90deg, rgba(84, 214, 255, 0.08) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(141, 255, 159, 0.06) 1px, transparent 1px),
-    radial-gradient(circle at 72% 42%, rgba(255, 190, 92, 0.2), transparent 32%),
-    linear-gradient(135deg, #071418, #14171c 55%, #221419);
+    linear-gradient(90deg, rgba(84, 214, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(141, 255, 159, 0.05) 1px, transparent 1px),
+    radial-gradient(circle at 72% 42%, rgba(84, 214, 255, 0.16), transparent 32%),
+    linear-gradient(135deg, #061317, #11181a 58%, #0c1512);
   background-size: 72px 72px, 72px 72px, auto, auto;
 }
 
@@ -684,6 +725,7 @@ body:not([data-view="overview"]) .metric-grid {
   background: rgba(84, 214, 255, 0.11);
   font: inherit;
   font-weight: 800;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -874,10 +916,10 @@ body:not([data-view="overview"]) .metric-grid {
   place-items: center;
   align-content: center;
   gap: 6px;
-  border: 1px solid rgba(255, 106, 122, 0.34);
+  border: 1px solid rgba(84, 214, 255, 0.28);
   border-radius: 50%;
   background:
-    radial-gradient(circle at center, rgba(255, 106, 122, 0.16), transparent 58%),
+    radial-gradient(circle at center, rgba(84, 214, 255, 0.12), transparent 58%),
     rgba(255,255,255,0.04);
 }
 
@@ -923,8 +965,8 @@ body:not([data-view="overview"]) .metric-grid {
   display: block;
   width: 0%;
   height: 100%;
-  background: linear-gradient(90deg, var(--red), var(--amber), var(--green));
-  transition: width 220ms ease;
+  background: linear-gradient(90deg, var(--cyan), var(--green), var(--amber));
+  transition: width 520ms cubic-bezier(.2, .8, .2, 1);
 }
 
 .stress-log {
@@ -1511,11 +1553,52 @@ body.load-failed .status-strip {
   }
   .stress-controls { grid-template-columns: 1fr 1fr; }
   .stress-live { grid-template-columns: 120px 1fr; }
-  .tabs { width: min(480px, calc(100vw - 40px)); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .shell {
+    display: block;
+    width: calc(100vw - 96px);
+    margin: 0 16px 0 80px;
+    padding-top: 18px;
+  }
+  .section-nav {
+    position: fixed;
+    inset: 12px auto 12px 12px;
+    width: 56px;
+    padding: 10px 7px;
+    border-radius: 14px;
+  }
+
+  .demo-mode .section-nav { top: 44px; }
+
+  .section-nav::before,
+  .section-nav::after {
+    display: none;
+  }
+
+  .tabs {
+    grid-template-columns: 1fr;
+    gap: 7px;
+    margin-top: 0;
+  }
+
+  .tab {
+    justify-content: center;
+    min-height: 40px;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .tab .svg-icon {
+    width: 19px;
+    height: 19px;
+  }
 }
 
 @media (max-width: 760px) {
-  .shell { width: min(100vw - 24px, 1480px); padding-top: 18px; }
+  .shell {
+    width: calc(100vw - 88px);
+    margin: 0 12px 0 76px;
+    padding-top: 14px;
+  }
   .topbar,
   .hero-grid,
   .metric-grid,
@@ -1545,9 +1628,9 @@ body.load-failed .status-strip {
     width: 100%;
     max-width: 100%;
   }
-  .section-menu-button { width: 100%; }
-  .tabs {
-    width: calc(100vw - 24px);
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .section-nav {
+    inset: 10px auto 10px 10px;
+    width: 52px;
+    padding: 8px 6px;
   }
 }

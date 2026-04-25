@@ -5,6 +5,7 @@ const state = {
   nativeRunnerStatus: null,
   nativeRunnerTimer: null,
   bench: { cpu: null, memory: null, gpu: null, sensors: null },
+  runningBench: null,
   stress: {
     active: false,
     startedAt: 0,
@@ -251,7 +252,11 @@ async function parseApiError(response) {
 
 function setBar(id, value) {
   const el = $(id);
-  if (el) el.style.width = pct(value);
+  if (!el) return;
+  const next = pct(value);
+  if (el.dataset.value === next) return;
+  el.dataset.value = next;
+  el.style.width = next;
 }
 
 function resizeCanvasToDisplaySize(canvas, minWidth = 1, minHeight = 1) {
@@ -651,9 +656,26 @@ function formatSeconds(ms) {
   return mins ? `${mins}m ${String(rest).padStart(2, "0")}s` : `${rest}s`;
 }
 
+function formatHours(value) {
+  const hours = Number(value) || 0;
+  return `${hours.toFixed(1).replace(/\.0$/, "")} h`;
+}
+
+function benchTypeFromButton(buttonId) {
+  return {
+    cpuBenchButton: "cpu",
+    memoryBenchButton: "memory",
+    gpuBenchButton: "gpu",
+    sensorBenchButton: "sensors"
+  }[buttonId] || null;
+}
+
 function setBenchBusy(buttonId, busy) {
   const button = $(buttonId);
   if (!button) return;
+  const type = benchTypeFromButton(buttonId);
+  if (busy && type) state.runningBench = type;
+  if (!busy && type && state.runningBench === type) state.runningBench = null;
   button.disabled = busy;
   button.classList.toggle("is-busy", busy);
   const label = buttonId === "cpuBenchButton" ? "Run CPU Load" : buttonId === "memoryBenchButton" ? "Run RAM Load" : buttonId === "gpuBenchButton" ? "Run GPU Render" : "Check Sensors";
@@ -665,13 +687,22 @@ function renderLab(snapshot) {
   const toolkit = state.toolkit?.tools || [];
   const has = (id) => toolkit.find((tool) => tool.id === id)?.available;
   const { cpu, memory, gpu, sensors } = state.bench;
-  $("memoryLabState").textContent = memory ? `${memory.heldMb} MB held · ${memory.cycles} sweeps · ${memory.elapsedMs} ms` : has("y-cruncher") || has("memtest86") ? "Bridge available · RAM load check ready" : "RAM load check ready";
-  $("gpuLabState").textContent = gpu ? `${gpu.workUnits.toLocaleString("en-US")} work · ${gpu.fps} fps · ${gpu.elapsedMs} ms` : has("furmark") || has("occt") ? "Bridge available · WebGL load check ready" : "WebGL load check ready";
-  $("sensorLabState").textContent = sensors ? sensorLine(sensors) : has("librehardwaremonitor") || has("hwinfo") || has("lm-sensors") || has("powermetrics") ? "Sensor bridge available" : "Quick sensor check ready";
-  $("cpuBenchResult").textContent = cpu ? `${cpu.opsPerSec.toLocaleString("en-US")} ops/sec · ${cpu.workers} workers · ${cpu.elapsedMs} ms` : `Current CPU load ${pct(snapshot.cpu?.loadPct)}`;
-  setBar("cpuBenchBar", cpu ? clamp(cpu.avgLoadPct || cpu.workers * 4) : snapshot.cpu?.loadPct);
-  setBar("memoryBenchBar", memory ? clamp(memory.heldMb / Math.max(memory.targetMb || 1, 1) * 100) : snapshot.memory?.usedPct);
-  setBar("sensorBenchBar", sensors ? clamp(100 - Math.max(sensors.cpu?.loadPct || 0, sensors.memory?.usedPct || 0, sensors.gpu?.util || 0)) : 15);
+  const running = state.runningBench;
+  if (running !== "memory") {
+    $("memoryLabState").textContent = memory ? `${memory.heldMb} MB held · ${memory.cycles} sweeps · ${memory.elapsedMs} ms` : has("y-cruncher") || has("memtest86") ? "Bridge available · RAM load ready" : "RAM load ready";
+    setBar("memoryBenchBar", memory ? clamp(memory.score || memory.heldMb / Math.max(memory.targetMb || 1, 1) * 100) : 28);
+  }
+  if (running !== "gpu") {
+    $("gpuLabState").textContent = gpu ? `${gpu.workUnits.toLocaleString("en-US")} work · ${gpu.fps} fps · ${gpu.elapsedMs} ms` : has("furmark") || has("occt") ? "Bridge available · WebGL load ready" : "WebGL load ready";
+  }
+  if (running !== "sensors") {
+    $("sensorLabState").textContent = sensors ? sensorLine(sensors) : has("librehardwaremonitor") || has("hwinfo") || has("lm-sensors") || has("powermetrics") ? "Sensor bridge available" : "Sensor check ready";
+    setBar("sensorBenchBar", sensors ? clamp(100 - Math.max(sensors.cpu?.loadPct || 0, sensors.memory?.usedPct || 0, sensors.gpu?.util || 0)) : 18);
+  }
+  if (running !== "cpu") {
+    $("cpuBenchResult").textContent = cpu ? `${cpu.opsPerSec.toLocaleString("en-US")} ops/sec · ${cpu.workers} workers · ${cpu.elapsedMs} ms` : `CPU live ${pct(snapshot.cpu?.loadPct)}`;
+    setBar("cpuBenchBar", cpu ? clamp(cpu.score || cpu.avgLoadPct || cpu.workers * 4 || 100) : 28);
+  }
   kv("benchResultList", [
     ["CPU load check", cpu ? `${cpu.opsPerSec.toLocaleString("en-US")} ops/sec · ${cpu.workers} workers` : "-"],
     ["Memory load check", memory ? `${memory.heldMb}/${memory.targetMb} MB · ${memory.cycles} sweeps` : "-"],
@@ -768,18 +799,15 @@ function renderNativeRunners() {
   if (!status.active && selected) {
     setNativeRunnerLog([
       selected.notes,
-      selected.safety?.recommendedMonitor || "Monitor temperatures and stop if the system becomes unstable.",
-      `Duration cap: ${formatSeconds((selected.safety?.maxDurationSec || selected.durationMaxSec || 0) * 1000)}`,
+      selected.available ? "Ready for manual launch" : "Executable not detected",
+      `Cap ${formatSeconds((selected.safety?.maxDurationSec || selected.durationMaxSec || 0) * 1000)}`,
       status.report ? `Last report: ${status.report.verdict} · ${formatSeconds(status.report.elapsedMs || 0)}` : null,
-      selected.executable || `${selected.toolId} executable not detected. Install the tool or add it to PATH.`,
-      "Confirmation required before launch."
     ].filter(Boolean));
   } else if (status.active) {
     setNativeRunnerLog([
       `${status.label} is running`,
       `Elapsed ${formatSeconds(status.elapsedMs || 0)} / ${formatSeconds(status.durationMs || 0)}`,
-      selected?.safety?.recommendedMonitor || "Watch thermals and system stability.",
-      ...(status.output || []).slice(-4)
+      ...(status.output || []).slice(-2)
     ]);
   }
 }
@@ -882,42 +910,135 @@ function startMemoryStress() {
   fill();
 }
 
-function startDemoGpuStress(canvas, intensity = 2) {
+function drawGpuPlaceholder(canvas, mode = "stress", progress = 0) {
   const ctx = canvas.getContext("2d");
-  state.stress.gpuEngine = "demo-render";
+  if (!ctx) return;
+  const minWidth = mode === "bench" ? 720 : 960;
+  const minHeight = mode === "bench" ? 220 : 360;
+  resizeCanvasToDisplaySize(canvas, minWidth, minHeight);
+  const t = performance.now() * 0.001;
+  const w = canvas.width;
+  const h = canvas.height;
+  const gradient = ctx.createLinearGradient(0, 0, w, h);
+  gradient.addColorStop(0, "#061317");
+  gradient.addColorStop(0.55, "#0b2428");
+  gradient.addColorStop(1, "#071411");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.strokeStyle = "rgba(84, 214, 255, 0.12)";
+  ctx.lineWidth = 1;
+  const gridX = Math.max(42, w / 18);
+  const gridY = Math.max(32, h / 7);
+  for (let x = -gridX; x <= w + gridX; x += gridX) {
+    ctx.beginPath();
+    ctx.moveTo(x + (t * 18) % gridX, 0);
+    ctx.lineTo(x + (t * 18) % gridX, h);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= h; y += gridY) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+
+  const centerY = h * 0.52;
+  ctx.lineWidth = Math.max(2, w / 680);
+  ctx.strokeStyle = "rgba(141, 255, 159, 0.82)";
+  ctx.beginPath();
+  for (let x = 0; x <= w; x += 5) {
+    const p = x / w;
+    const y = centerY
+      + Math.sin(p * Math.PI * 7 + t * 2.8) * h * 0.13
+      + Math.sin(p * Math.PI * 23 - t * 3.4) * h * 0.035;
+    if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  const sweepX = (w * (progress || (t * 0.13 % 1))) % w;
+  const sweep = ctx.createLinearGradient(Math.max(0, sweepX - w * 0.18), 0, Math.min(w, sweepX + w * 0.08), 0);
+  sweep.addColorStop(0, "rgba(84, 214, 255, 0)");
+  sweep.addColorStop(0.72, "rgba(84, 214, 255, 0.22)");
+  sweep.addColorStop(1, "rgba(141, 255, 159, 0)");
+  ctx.fillStyle = sweep;
+  ctx.fillRect(Math.max(0, sweepX - w * 0.18), 0, w * 0.26, h);
+
+  ctx.fillStyle = "rgba(244, 241, 234, 0.68)";
+  ctx.font = `${Math.max(11, Math.round(w / 95))}px Segoe UI, system-ui, sans-serif`;
+  ctx.fillText(mode === "bench" ? "GPU visual monitor" : "GPU stress monitor", 18, 26);
+}
+
+function createBackgroundGpuWorkload(intensity = 2, passes = 24, profile = "bench") {
+  const canvas = document.createElement("canvas");
+  const gl = canvas.getContext("webgl2", { antialias: false, powerPreference: "high-performance" }) ||
+    canvas.getContext("webgl", { antialias: false, powerPreference: "high-performance" });
+  if (!gl) return null;
+  const vertexSource = "attribute vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }";
+  const fragmentSource = `
+    precision highp float;
+    uniform vec2 resolution;
+    uniform float time;
+    void main() {
+      vec2 p = (gl_FragCoord.xy * 2.0 - resolution.xy) / min(resolution.x, resolution.y);
+      float v = 0.0;
+      for (int i = 0; i < 24; i++) {
+        float fi = float(i);
+        p = abs(p) / max(dot(p, p), 0.18) - vec2(0.72 + 0.04 * sin(time + fi), 0.56);
+        v += sin(length(p) * (8.0 + fi * 0.06) + time) * 0.006;
+      }
+      gl_FragColor = vec4(vec3(fract(v * 5.0), fract(v * 7.0), fract(v * 11.0)), 1.0);
+    }
+  `;
+  const makeShader = (type, source) => {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
+    return shader;
+  };
+  try {
+    const program = gl.createProgram();
+    gl.attachShader(program, makeShader(gl.VERTEX_SHADER, vertexSource));
+    gl.attachShader(program, makeShader(gl.FRAGMENT_SHADER, fragmentSource));
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+    const position = gl.getAttribLocation(program, "position");
+    const resolution = gl.getUniformLocation(program, "resolution");
+    const time = gl.getUniformLocation(program, "time");
+    const width = profile === "stress"
+      ? intensity >= 3 ? 1600 : intensity >= 2 ? 1280 : 960
+      : intensity >= 3 ? 640 : intensity >= 2 ? 480 : 360;
+    const height = Math.round(width * 0.42);
+    canvas.width = width;
+    canvas.height = height;
+    return {
+      render(now) {
+        gl.viewport(0, 0, width, height);
+        gl.useProgram(program);
+        gl.enableVertexAttribArray(position);
+        gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+        gl.uniform2f(resolution, width, height);
+        gl.uniform1f(time, now * 0.001);
+        for (let pass = 0; pass < passes; pass++) gl.drawArrays(gl.TRIANGLES, 0, 6);
+        return passes;
+      }
+    };
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+}
+
+function startDemoGpuStress(canvas, intensity = 2) {
+  state.stress.gpuEngine = "visual-demo";
   state.stress.gpuPasses = intensity >= 3 ? 24 : intensity >= 2 ? 16 : 8;
   const draw = () => {
     if (!state.stress.active) return;
-    resizeCanvasToDisplaySize(canvas, 960, 360);
-    const t = performance.now() * 0.001;
-    const w = canvas.width;
-    const h = canvas.height;
-    const gradient = ctx.createLinearGradient(0, 0, w, h);
-    gradient.addColorStop(0, "#071418");
-    gradient.addColorStop(0.48, `hsl(${(t * 58 + 190) % 360}, 74%, 24%)`);
-    gradient.addColorStop(1, "#221419");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = "rgba(84, 214, 255, 0.16)";
-    ctx.lineWidth = Math.max(1, w / 900);
-    for (let x = 0; x <= w; x += w / 18) {
-      ctx.beginPath();
-      ctx.moveTo(x + Math.sin(t + x * 0.01) * 12, 0);
-      ctx.lineTo(x, h);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = "rgba(141, 255, 159, 0.62)";
-    ctx.beginPath();
-    for (let x = 0; x <= w; x += 8) {
-      const p = x / w;
-      const y = h * 0.5 + Math.sin(p * Math.PI * 8 + t * 2) * h * 0.12;
-      if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    ctx.fillStyle = "rgba(255, 190, 92, 0.16)";
-    ctx.beginPath();
-    ctx.arc(w * (0.5 + Math.sin(t) * 0.22), h * (0.5 + Math.cos(t * 0.8) * 0.18), h * 0.2, 0, Math.PI * 2);
-    ctx.fill();
+    drawGpuPlaceholder(canvas, "stress");
     state.stress.gpuFrames++;
     state.stress.gpuWorkUnits += state.stress.gpuPasses;
     state.stress.raf = requestAnimationFrame(draw);
@@ -931,119 +1052,27 @@ function startGpuStress(intensity = 2) {
     startDemoGpuStress(canvas, intensity);
     return;
   }
-  const gl = canvas.getContext("webgl2", { antialias: false, powerPreference: "high-performance" }) ||
-    canvas.getContext("webgl", { antialias: false, powerPreference: "high-performance" });
-  if (!gl) {
-    startGpuStress2d(canvas);
-    return;
-  }
-  const passes = intensity >= 3 ? 160 : intensity >= 2 ? 96 : 42;
-  state.stress.gpuEngine = "webgl";
-  state.stress.gpuPasses = passes;
-  const vertexSource = `
-    attribute vec2 position;
-    void main() { gl_Position = vec4(position, 0.0, 1.0); }
-  `;
-  const fragmentSource = `
-    precision highp float;
-    uniform vec2 resolution;
-    uniform float time;
-
-    void main() {
-      vec2 p = (gl_FragCoord.xy * 2.0 - resolution.xy) / min(resolution.x, resolution.y);
-      float v = 0.0;
-      for (int i = 0; i < 96; i++) {
-        float fi = float(i);
-        p = abs(p) / max(dot(p, p), 0.18) - vec2(0.74 + 0.04 * sin(time + fi), 0.58);
-        v += exp(-abs(length(p) - 0.66)) * 0.006;
-      }
-      vec3 color = vec3(v * 2.0 + 0.03, v * 1.1 + 0.12, v * 2.8 + 0.2);
-      gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
-    }
-  `;
-  const makeShader = (type, source) => {
-    const shader = gl.createShader(type);
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
-    return shader;
-  };
-  const program = gl.createProgram();
-  try {
-    gl.attachShader(program, makeShader(gl.VERTEX_SHADER, vertexSource));
-    gl.attachShader(program, makeShader(gl.FRAGMENT_SHADER, fragmentSource));
-  } catch (error) {
-    console.error(error);
-    startGpuStress2d(canvas);
-    return;
-  }
-  gl.linkProgram(program);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    startGpuStress2d(canvas);
-    return;
-  }
-  const buffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
-  const position = gl.getAttribLocation(program, "position");
-  const resolution = gl.getUniformLocation(program, "resolution");
-  const time = gl.getUniformLocation(program, "time");
+  const passes = intensity >= 3 ? 112 : intensity >= 2 ? 72 : 32;
+  const workload = createBackgroundGpuWorkload(intensity, passes, "stress");
+  state.stress.gpuEngine = workload ? "webgl-bg" : "visual";
+  state.stress.gpuPasses = workload ? passes : 1;
   const draw = () => {
     if (!state.stress.active) return;
-    resizeCanvasForGpuStress(canvas, intensity);
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(0.02, 0.03, 0.04, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(program);
-    gl.enableVertexAttribArray(position);
-    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    gl.uniform2f(resolution, canvas.width, canvas.height);
-    gl.uniform1f(time, performance.now() * 0.001);
-    for (let pass = 0; pass < passes; pass++) gl.drawArrays(gl.TRIANGLES, 0, 6);
-    gl.flush();
+    const progress = state.stress.durationMs ? clamp((performance.now() - state.stress.startedAt) / state.stress.durationMs * 100) / 100 : 0;
+    drawGpuPlaceholder(canvas, "stress", progress);
     state.stress.gpuFrames++;
-    state.stress.gpuWorkUnits += passes;
+    state.stress.gpuWorkUnits += workload ? workload.render(performance.now()) : 1;
     state.stress.raf = requestAnimationFrame(draw);
   };
   state.stress.raf = requestAnimationFrame(draw);
 }
 
 function startGpuStress2d(canvas) {
-  const ctx = canvas.getContext("2d");
-  state.stress.gpuEngine = "canvas-2d";
+  state.stress.gpuEngine = "visual";
   state.stress.gpuPasses = 1;
   const draw = () => {
     if (!state.stress.active) return;
-    resizeCanvasToDisplaySize(canvas, 960, 360);
-    const t = performance.now() * 0.004;
-    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, "#061317");
-    gradient.addColorStop(0.48, `hsl(${(t * 50 + 178) % 360}, 74%, 27%)`);
-    gradient.addColorStop(1, "#241015");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.globalCompositeOperation = "lighter";
-    for (let i = 0; i < 2200; i++) {
-      const x = (Math.sin(i * 0.87 + t) * 0.5 + 0.5) * canvas.width;
-      const y = (Math.cos(i * 1.21 + t * 1.4) * 0.5 + 0.5) * canvas.height;
-      ctx.fillStyle = i % 3 === 0 ? "rgba(255, 118, 78, 0.035)" : "rgba(84, 214, 255, 0.035)";
-      ctx.fillRect(x, y, 22, 22);
-    }
-    ctx.globalCompositeOperation = "source-over";
-    ctx.strokeStyle = "rgba(244, 241, 234, 0.08)";
-    ctx.lineWidth = 1;
-    for (let x = 0; x < canvas.width; x += canvas.width / 18) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
-      ctx.stroke();
-    }
-    for (let y = 0; y < canvas.height; y += canvas.height / 8) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
-      ctx.stroke();
-    }
+    drawGpuPlaceholder(canvas, "stress");
     state.stress.gpuFrames++;
     state.stress.gpuWorkUnits++;
     state.stress.raf = requestAnimationFrame(draw);
@@ -1062,7 +1091,7 @@ function drawStressCanvasIdle() {
   const gradient = ctx.createLinearGradient(0, 0, w, h);
   gradient.addColorStop(0, "#071418");
   gradient.addColorStop(0.55, "#11151a");
-  gradient.addColorStop(1, "#221419");
+  gradient.addColorStop(1, "#0c1714");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, w, h);
   ctx.strokeStyle = "rgba(84, 214, 255, 0.11)";
@@ -1089,8 +1118,8 @@ function drawStressCanvasIdle() {
   }
   ctx.stroke();
   const pulse = ctx.createRadialGradient(w * 0.72, h * 0.42, 0, w * 0.72, h * 0.42, h * 0.48);
-  pulse.addColorStop(0, "rgba(255, 190, 92, 0.24)");
-  pulse.addColorStop(1, "rgba(255, 190, 92, 0)");
+  pulse.addColorStop(0, "rgba(84, 214, 255, 0.2)");
+  pulse.addColorStop(1, "rgba(84, 214, 255, 0)");
   ctx.fillStyle = pulse;
   ctx.fillRect(0, 0, w, h);
 }
@@ -1104,10 +1133,9 @@ async function pollStressSensors() {
       if (!state.stress.active) return;
       state.bench.sensors = state.stress.lastSensors;
       setStressLog([
-        "running",
+        "Running",
         sensorLine(state.stress.lastSensors),
-        `CPU ops ${state.stress.cpuOps.toLocaleString("en-US")}`,
-        `GPU work ${state.stress.gpuWorkUnits.toLocaleString("en-US")}`
+        `Work ${Math.max(state.stress.cpuOps || 0, state.stress.gpuWorkUnits || 0).toLocaleString("en-US")}`
       ]);
     }
   } catch (error) {
@@ -1141,7 +1169,11 @@ async function startStressTest() {
     memoryCycles: 0
   });
   setStressControls(true);
-  setStressLog([`Started ${options.durationSec}s`, options.cpu ? "CPU workers" : "CPU off", options.memory ? `RAM target ${options.targetMb} MB` : "RAM off", options.gpu ? `GPU ${options.gpuIntensity >= 3 ? "extreme" : options.gpuIntensity >= 2 ? "heavy" : "light"}` : "GPU off"]);
+  setStressLog([
+    `Started ${options.durationSec}s`,
+    [options.cpu ? "CPU" : null, options.memory ? "RAM" : null, options.gpu ? "GPU" : null].filter(Boolean).join("+"),
+    "Stop anytime"
+  ]);
   try {
     if (options.cpu || options.memory) await startServerStress(options);
     if (options.gpu) startGpuStress(options.gpuIntensity);
@@ -1203,9 +1235,8 @@ function stopStressTest(reason = "stopped") {
   state.stress.gpuPasses = 0;
   setStressControls(false);
   setStressLog([
-    reason,
-    `stability ${score}/100`,
-    `duration ${state.stress.result.duration}`,
+    `${reason} · ${score}/100`,
+    state.stress.result.duration,
     sensors ? sensorLine(sensors) : "sensor sweep not available"
   ]);
   drawStressCanvasIdle();
@@ -1462,7 +1493,7 @@ function renderSummary(snapshot) {
     ["Memory", `${inv.memory?.totalGb || "-"} GB`, `${inv.memory?.modules?.length || 0} modules`],
     ["Graphics", inv.gpu?.name, `${inv.gpu?.vramMb || "-"} MB VRAM`],
     ["Windows", inv.os?.caption, `build ${inv.os?.build || "-"} · ${inv.os?.architecture || "-"}`],
-    ["Boot", formatDateTime(inv.os?.bootTime, "-"), `uptime ${snapshot.machine?.uptimeHours || 0} h`],
+    ["Boot", formatDateTime(inv.os?.bootTime, "-"), `uptime ${formatHours(snapshot.machine?.uptimeHours)}`],
     ["Secure Boot", inv.system?.secureBoot === null ? "unknown" : inv.system?.secureBoot ? "enabled" : "disabled", "UEFI firmware state"],
     ["Hypervisor", inv.system?.hypervisorPresent ? "present" : "not reported", "Windows platform"],
     ["Physical Disks", inv.physicalDisks?.length || 0, "detected devices"],
@@ -1499,7 +1530,7 @@ function renderLive(snapshot) {
   $("osValue").textContent = `${machine.os || "-"} · build ${machine.build || "-"}`;
   $("cpuValue").textContent = machine.cpu || "-";
   $("gpuName").textContent = machine.gpu || gpu.name || "-";
-  $("uptimeValue").textContent = `${machine.uptimeHours || 0} h`;
+  $("uptimeValue").textContent = formatHours(machine.uptimeHours);
 
   $("cpuUtil").textContent = pct(cpu.loadPct);
   $("cpuDetails").textContent = `${cpu.cores || "-"} cores · ${cpu.threads || "-"} threads · ${cpu.maxClockMhz || "-"} MHz`;
@@ -2024,14 +2055,15 @@ async function runDemoCpuBench() {
     workers: navigator.hardwareConcurrency || 12,
     ops: 724000,
     opsPerSec: 452500,
-    avgLoadPct: 74
+    avgLoadPct: 74,
+    score: 100
   };
   saveBenchResults();
+  setBenchBusy("cpuBenchButton", false);
   if (state.snapshot) {
     renderSuite(state.snapshot);
     renderLab(state.snapshot);
   }
-  setBenchBusy("cpuBenchButton", false);
 }
 
 async function runCpuBench() {
@@ -2073,9 +2105,11 @@ async function runCpuBench() {
       workers: Number(cpu.workers || workers),
       ops,
       opsPerSec: Math.round(ops / Math.max(elapsedMs / 1000, 0.1)),
-      avgLoadPct: state.stress.lastSensors?.cpu?.loadPct || null
+      avgLoadPct: state.stress.lastSensors?.cpu?.loadPct || null,
+      score: 100
     };
     saveBenchResults();
+    setBenchBusy("cpuBenchButton", false);
     if (state.snapshot) {
       renderSuite(state.snapshot);
       renderLab(state.snapshot);
@@ -2111,11 +2145,11 @@ async function runDemoMemoryBench() {
     score: 100
   };
   saveBenchResults();
+  setBenchBusy("memoryBenchButton", false);
   if (state.snapshot) {
     renderSuite(state.snapshot);
     renderLab(state.snapshot);
   }
-  setBenchBusy("memoryBenchButton", false);
 }
 
 async function runMemoryBench() {
@@ -2160,6 +2194,7 @@ async function runMemoryBench() {
       score: Math.round((heldMb / Math.max(Number(memory.targetMb || targetMb), 1)) * 100)
     };
     saveBenchResults();
+    setBenchBusy("memoryBenchButton", false);
     if (state.snapshot) {
       renderSuite(state.snapshot);
       renderLab(state.snapshot);
@@ -2177,16 +2212,14 @@ async function runSensorSweep() {
 }
 
 async function runServerBench(type, url, buttonId, statusId, runningText) {
-  const button = $(buttonId);
-  button.disabled = true;
-  button.classList.add("is-busy");
-  setCommandButtonLabel(button, "Running...", "activity");
+  setBenchBusy(buttonId, true);
   $(statusId).textContent = runningText;
   try {
     const response = await fetch(url, { method: "POST", cache: "no-store" });
     if (!response.ok) throw new Error(await parseApiError(response));
     state.bench[type] = await response.json();
     saveBenchResults();
+    setBenchBusy(buttonId, false);
     if (state.snapshot) {
       renderSuite(state.snapshot);
       renderLab(state.snapshot);
@@ -2195,9 +2228,7 @@ async function runServerBench(type, url, buttonId, statusId, runningText) {
     $(statusId).textContent = `Failed: ${prettyValue(error.message, "Test error")}`;
     console.error(error);
   } finally {
-    button.disabled = false;
-    button.classList.remove("is-busy");
-    setCommandButtonLabel(button, type === "cpu" ? "Run CPU Load" : type === "memory" ? "Run RAM Load" : "Check Sensors", type === "cpu" ? "chip" : type === "memory" ? "database" : "activity");
+    setBenchBusy(buttonId, false);
   }
 }
 
@@ -2216,8 +2247,8 @@ async function runDemoGpuBench() {
     const h = canvas.height;
     const gradient = ctx.createLinearGradient(0, 0, w, h);
     gradient.addColorStop(0, "#14323a");
-    gradient.addColorStop(0.5, `hsl(${180 + progress}, 80%, 42%)`);
-    gradient.addColorStop(1, "#382338");
+    gradient.addColorStop(0.5, `hsl(${175 + progress * 0.35}, 70%, 38%)`);
+    gradient.addColorStop(1, "#0e1d17");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = "rgba(255,255,255,0.12)";
@@ -2234,14 +2265,15 @@ async function runDemoGpuBench() {
       frames,
       fps: 144,
       workUnits: 24576,
-      engine: "demo-render"
+      engine: "demo-render",
+      score: 100
     };
     saveBenchResults();
+    setBenchBusy("gpuBenchButton", false);
     if (state.snapshot) {
       renderSuite(state.snapshot);
       renderLab(state.snapshot);
     }
-    setBenchBusy("gpuBenchButton", false);
   };
   requestAnimationFrame(draw);
 }
@@ -2251,92 +2283,26 @@ async function runGpuBench() {
     await runDemoGpuBench();
     return;
   }
-  const button = $("gpuBenchButton");
   const canvas = resetCanvasElement("gpuBenchCanvas");
   setBenchBusy("gpuBenchButton", true);
-  $("gpuLabState").textContent = "WebGL load check running";
+  $("gpuLabState").textContent = "GPU load check running";
   const start = performance.now();
   const duration = 6500;
   let frames = 0;
   let workUnits = 0;
   const intensity = Number($("stressGpuIntensity")?.value || 2);
-  const passes = intensity >= 3 ? 96 : intensity >= 2 ? 54 : 22;
-  const gl = canvas.getContext("webgl2", { antialias: false, powerPreference: "high-performance" }) ||
-    canvas.getContext("webgl", { antialias: false, powerPreference: "high-performance" });
+  const passes = intensity >= 3 ? 16 : intensity >= 2 ? 8 : 4;
+  const workload = createBackgroundGpuWorkload(intensity, passes);
 
-  if (gl) {
-    const vertexSource = "attribute vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }";
-    const fragmentSource = `
-      precision highp float;
-      uniform vec2 resolution;
-      uniform float time;
-      void main() {
-        vec2 p = (gl_FragCoord.xy * 2.0 - resolution.xy) / min(resolution.x, resolution.y);
-        float v = 0.0;
-        for (int i = 0; i < 96; i++) {
-          float fi = float(i);
-          p = abs(p) / max(dot(p, p), 0.18) - vec2(0.74 + 0.04 * sin(time + fi), 0.58);
-          v += exp(-abs(length(p) - 0.66)) * 0.006;
-        }
-        vec3 color = vec3(v * 2.0 + 0.03, v * 1.1 + 0.12, v * 2.8 + 0.2);
-        gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
-      }
-    `;
-    const makeShader = (type, source) => {
-      const shader = gl.createShader(type);
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
-      return shader;
-    };
-    const program = gl.createProgram();
-    gl.attachShader(program, makeShader(gl.VERTEX_SHADER, vertexSource));
-    gl.attachShader(program, makeShader(gl.FRAGMENT_SHADER, fragmentSource));
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
-    const buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
-    const position = gl.getAttribLocation(program, "position");
-    const resolution = gl.getUniformLocation(program, "resolution");
-    const time = gl.getUniformLocation(program, "time");
-    while (performance.now() - start < duration) {
-      resizeCanvasToDisplaySize(canvas, intensity >= 3 ? 1920 : 1440, intensity >= 3 ? 720 : 540);
-      gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.useProgram(program);
-      gl.enableVertexAttribArray(position);
-      gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-      gl.uniform2f(resolution, canvas.width, canvas.height);
-      gl.uniform1f(time, performance.now() * 0.001);
-      for (let pass = 0; pass < passes; pass++) gl.drawArrays(gl.TRIANGLES, 0, 6);
-      gl.flush();
-      frames++;
-      workUnits += passes;
-      $("gpuLabState").textContent = `${workUnits.toLocaleString("en-US")} work · ${frames} frames`;
-      await new Promise(requestAnimationFrame);
-    }
-  } else {
-    const ctx = canvas.getContext("2d");
-    while (performance.now() - start < duration) {
-      resizeCanvasToDisplaySize(canvas, 960, 360);
-      const t = performance.now() * 0.004;
-      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-      gradient.addColorStop(0, "#061317");
-      gradient.addColorStop(0.5, `hsl(${(t * 50 + 178) % 360}, 74%, 27%)`);
-      gradient.addColorStop(1, "#241015");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      for (let i = 0; i < 3500; i++) {
-        const x = (Math.sin(i * 12.989 + t) * 0.5 + 0.5) * canvas.width;
-        const y = (Math.cos(i * 78.233 + t * 1.3) * 0.5 + 0.5) * canvas.height;
-        ctx.fillStyle = i % 3 === 0 ? "rgba(255, 118, 78, 0.035)" : "rgba(84, 214, 255, 0.035)";
-        ctx.fillRect(x, y, 18, 18);
-      }
-      frames++;
-      workUnits++;
-      await new Promise(requestAnimationFrame);
-    }
+  while (performance.now() - start < duration) {
+    const elapsed = performance.now() - start;
+    drawGpuPlaceholder(canvas, "bench", clamp(elapsed / duration * 100) / 100);
+    frames++;
+    workUnits += workload ? workload.render(performance.now()) : 1;
+    $("gpuLabState").textContent = `${workUnits.toLocaleString("en-US")} work - ${frames} frames`;
+    await new Promise((resolve) => setTimeout(resolve, 33));
   }
+
   const elapsedMs = Math.round(performance.now() - start);
   const fps = Math.round(frames / (elapsedMs / 1000));
   state.bench.gpu = {
@@ -2345,18 +2311,17 @@ async function runGpuBench() {
     frames,
     workUnits,
     passes,
-    engine: gl ? "webgl" : "canvas-2d",
+    engine: workload ? "webgl-bg" : "visual",
     fps,
     score: workUnits
   };
   saveBenchResults();
+  setBenchBusy("gpuBenchButton", false);
   if (state.snapshot) {
     renderSuite(state.snapshot);
     renderLab(state.snapshot);
   }
-  setBenchBusy("gpuBenchButton", false);
 }
-
 function setView(name) {
   document.body.dataset.view = name;
   document.querySelectorAll(".tab").forEach((tab) => {
@@ -2381,10 +2346,9 @@ function setView(name) {
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
     setView(tab.dataset.view);
-    $("sectionMenuButton")?.focus({ preventScroll: true });
   });
 });
-$("sectionMenuButton").addEventListener("click", () => {
+$("sectionMenuButton")?.addEventListener("click", () => {
   const nav = document.querySelector(".section-nav");
   const expanded = !nav.classList.contains("open");
   nav.classList.toggle("open", expanded);
