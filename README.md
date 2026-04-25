@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/FaulMit/rigscope/releases/latest"><img alt="Latest release" src="https://img.shields.io/badge/release-v1.1.0-54d6ff?style=for-the-badge"></a>
+  <a href="https://github.com/FaulMit/rigscope/releases/latest"><img alt="Latest release" src="https://img.shields.io/badge/release-v1.1.1-54d6ff?style=for-the-badge"></a>
   <a href="https://faulmit.github.io/rigscope/"><img alt="Live demo" src="https://img.shields.io/badge/live-demo-8dff9f?style=for-the-badge"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/Windows%20%7C%20Linux%20%7C%20macOS-111?style=for-the-badge">
 </p>

@@ -3,7 +3,7 @@ window.RIGSCOPE_DEMO_FIXTURES = {
   "generatedBy": "scripts/sync-docs-demo.js",
   "app": {
     "name": "RigScope",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "liveDemo": "https://faulmit.github.io/rigscope/",
     "scoreboardUrl": "https://rigscope-scoreboard.faulmit.workers.dev"
   },

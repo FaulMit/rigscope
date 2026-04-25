@@ -2,7 +2,7 @@
   "app": {
     "name": "RigScope",
     "tagline": "One clean cockpit for your whole PC.",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "repository": "https://github.com/FaulMit/rigscope",
     "liveDemo": "https://faulmit.github.io/rigscope/",
     "scoreboardUrl": "https://rigscope-scoreboard.faulmit.workers.dev"

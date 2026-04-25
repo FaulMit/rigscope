@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+No unreleased changes yet.
+
+## 1.1.1 - 2026-04-25
+
 ### Added
 
 - Added a static GitHub Pages demo site that reuses the production UI with simulated hardware data, fake stress-test flows, demo native runners, and mock community sync.
@@ -18,6 +22,7 @@
 
 - Fixed live polling overwriting active quick-test UI states while a benchmark is running.
 - Fixed GPU quick bench WebGL failures leaving the test stuck instead of falling back to canvas rendering.
+- Fixed tagged release notes generation when an empty Unreleased section is present.
 
 ## 1.1.0 - 2026-04-24
 

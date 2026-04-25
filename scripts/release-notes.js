@@ -7,7 +7,9 @@ const root = path.resolve(__dirname, "..");
 const changelogPath = path.join(root, "CHANGELOG.md");
 const outputPath = process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, "release-notes.md");
 const changelog = fs.readFileSync(changelogPath, "utf8");
-const latestSection = changelog.split(/\r?\n(?=##\s+)/).find((section) => section.startsWith("## "));
+const latestSection = changelog
+  .split(/\r?\n(?=##\s+)/)
+  .find((section) => section.startsWith("## ") && !section.match(/^##\s+Unreleased\b/i));
 const match = latestSection && latestSection.match(/^##\s+(.+?)\r?\n([\s\S]*)$/);
 
 if (!match) {
